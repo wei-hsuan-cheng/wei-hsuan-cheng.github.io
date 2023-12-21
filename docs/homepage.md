@@ -1,5 +1,5 @@
 layout: page
 title: "Wei-Hsuan's homepage"
-permalink: /home
+permalink: /about/home
 
 Welcome to Wei-Hsuan's homepage!

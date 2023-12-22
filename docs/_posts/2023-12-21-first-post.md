@@ -1,8 +1,8 @@
 ---
 layout: post
-title: "First post"
+title: "Welcom to Wei-Hsuan's homepage!"
 date: 2023-12-21 18:43:00 +0800
-categories: CATEGORY-1 CATEGORY-2
+categories: welcome
 ---
 
-This is the first post.
+More about Wei-Hsuan.

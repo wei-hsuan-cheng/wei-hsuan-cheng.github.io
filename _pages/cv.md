@@ -1,6 +1,6 @@
 ---
 layout: archive
-title: "CV"
+title: "CV (This page is actively being edited)"
 permalink: /cv/
 author_profile: true
 redirect_from:
@@ -9,7 +9,7 @@ redirect_from:
 
 {% include base_path %}
 
-Education
+<!-- Education
 ======
 * Ph.D in Version Control Theory, GitHub University, 2018 (expected)
 * M.S. in Jekyll, GitHub University, 2014
@@ -61,8 +61,10 @@ Teaching
   
 Service and leadership
 ======
-* Currently signed in to 43 different slack teams
+* Currently signed in to 43 different slack teams -->
 
-CV in PDF
-======
+
+
+<!-- CV in PDF
+====== -->
 <embed src="/files/pdfs/resume/wei_hsuan_cheng_cv.pdf" type="application/pdf" width="100%" height="600px" />

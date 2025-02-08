@@ -33,4 +33,4 @@ Check out my [projects] and [resume] here. Reach out if you’re intereted in wh
 [NTUBME]: https://www.bime.ntu.edu.tw/English/Default.html
 [NTU]: https://www.ntu.edu.tw/english/
 [projects]: /projects/
-[resume]: /CV/
+[resume]: /cv/

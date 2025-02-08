@@ -10,7 +10,7 @@
 # Testing your GitHub Pages site locally with Jekyll
 # See details in https://docs.github.com/en/pages/setting-up-a-github-pages-site-with-jekyll/testing-your-github-pages-site-locally-with-jekyll
 
-cd ~/wei-hsuan-cheng.github.io/docs # cd ~/<website_name>.github.io/docs/
+cd ~/wei-hsuan-cheng.github.io/ # cd ~/<website_name>.github.io/
 
 bundle install && bundle exec jekyll serve
 

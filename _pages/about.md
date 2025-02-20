@@ -19,6 +19,7 @@ redirect_from:
 **Looking for PhD position in robotics!!**
 
 Hi, this is Wei-Hsuan Cheng (he/him). I am currently a master student at [Robots and Medical Mechatronics Lab (RMML)][RMML], [Department of Biomechatronics Engineering][NTUBME], [National Taiwan University (NTU)][NTU]. 
+- Master thesis title: *“Application of Vision- and Force-Based Supervisory Teleoperation for Robotic Dexterous Manipulation Tasks in Industrial Surveillance”*
 
 My research interest lies on fields of ``robotics``, particularly in ``robotic arm manipulations``. I have experience in diverse domains in robotics, including and not limited to
 - ``Teleoperation`` robotic system through ``wireless communication``

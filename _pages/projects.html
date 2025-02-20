@@ -7,8 +7,8 @@ author_profile: true
 
 {% include base_path %}
 
-
-{% for post in site.projects %}
+<!-- Add "reversed" to the for loop to display the projects in reverse chronological order. -->
+{% for post in site.projects reversed %} 
   {% include archive-single-project.html %}
 {% endfor %}
 

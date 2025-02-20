@@ -28,8 +28,8 @@ My research interest lies on fields of ``robotics``, particularly in ``robotic a
 - ``Kalman filtering`` (EKF, UKF, etc.)
 - Application of ``geometric algebra`` in robotics
 
-<!-- Check out my [projects] and [resume] here. Reach out if you’re intereted in what I’m doing! -->
-Check out my [resume] here. Reach out if you’re intereted in what I’m doing!
+Check out my [projects] and [resume] here. Reach out if you’re intereted in what I’m doing!
+<!-- Check out my [resume] here. Reach out if you’re intereted in what I’m doing! -->
 
 [RMML]: http://rmml.bime.ntu.edu.tw/nturmmle.html
 [NTUBME]: https://www.bime.ntu.edu.tw/English/Default.html

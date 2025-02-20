@@ -24,7 +24,7 @@ My research interest lies on fields of ``robotics``, particularly in ``robotic a
 - ``Teleoperation`` robotic system through ``wireless communication``
 - Robotic ``dexterous`` manipulations
 - Robotic arm ``vision-`` and ``force-``based controls
-- ``Kalman filtering``
+- ``Kalman filtering`` (EKF, UKF, etc.)
 - Application of ``geometric algebra`` in robotics
 
 Check out my [projects] and [resume] here. Reach out if you’re intereted in what I’m doing!

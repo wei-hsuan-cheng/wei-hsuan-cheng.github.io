@@ -22,8 +22,8 @@ Hi, this is Wei-Hsuan Cheng (he/him). I am currently a master student at [Robots
 
 My research interest lies on fields of ``robotics``, particularly in ``robotic arm manipulations``. I have experience in diverse domains in robotics, including and not limited to
 - ``Teleoperation`` robotic system through ``wireless communication``
-- Robotic ``dexterous`` manipulations
-- Robotic arm ``vision-`` and ``force-``based controls
+- Robotic ``dexterous`` manipulations (contact-rich and physical interactions)
+- Robotic arm ``vision-`` and ``force-``based controls (visual servoing, admittance control, etc.)
 - ``Kalman filtering`` (EKF, UKF, etc.)
 - Application of ``geometric algebra`` in robotics
 

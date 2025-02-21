@@ -1,5 +1,5 @@
 ---
-title: "Attitude and Angular Velocity Estimation of Surgical Robot Using Sensor Fusion with Optical Tracker, IMU, and Quaternion-based Extended Kalman Filter"
+title: "Attitude and Angular Velocity Estimation of Surgical Robot Using Sensor Fusion with Optical Tracker, IMU, and Quaternion-Based Extended Kalman Filter"
 collection: projects
 permalink: /project/2023-05-quat-est
 # excerpt: "Short description of project item number 1<br/><img src='/images/500x300.png'>"

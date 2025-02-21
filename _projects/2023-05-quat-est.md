@@ -3,11 +3,14 @@ title: "Attitude and Angular Velocity Estimation of Surgical Robot Using Sensor 
 collection: projects
 permalink: /project/2023-05-quat-est
 # excerpt: "Short description of project item number 1<br/><img src='/images/500x300.png'>"
-excerpt: "Quaternion attitude and angular velocity estimation via NDI, IMU, and EKF/UKF. **GitHub page: [kf_cpp](https://github.com/wei-hsuan-cheng/kf_cpp)**"
+excerpt: "Quaternion attitude and angular velocity estimation via NDI, IMU, and EKF/UKF. **GitHub repo: [kf_cpp](https://github.com/wei-hsuan-cheng/kf_cpp)**"
 date: 2023-05-01
 # slidesurl: 'http://academicpages.github.io/files/slides1.pdf'
 # paperurl: '/files/pdfs/projects/quat_est.pdf'
 ---
+
+Project overview
+======
 
 For surgical robots that conduct minimally invasive surgeries, robust and precise perception of the robot end-effector is required for tracking and navigation of the surgical probes or needles. In this scenario, single sensor may not be sufficient due to its natural limitation that reduce the sensing robustness. 
 

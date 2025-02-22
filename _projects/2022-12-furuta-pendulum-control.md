@@ -9,13 +9,12 @@ date: 2022-12-01
 # paperurl: ''
 ---
 
-Project overview
-======
+# Project overview
 
-This project aims to stabilise the Furuta pendulum system by the design of state-observer feedback controller. An internal model is proposed to reject the sinusoidal process noise in the input signal of maxon motor. The simulation of system dynamics and code implementation of control algorithm are done using Simulink, Simscape, and MATLAB.
+This project aims to stabilise the Furuta pendulum system by the design of state-observer feedback controller. An internal model is proposed to reject the sinusoidal process noise in the input signal of maxon motor. The simulation of system dynamics and code implementation of control algorithm are done using ``Simulink``, ``Simscape``, and ``MATLAB``.
 
 
-Project report in PDF
-======
+# Project report in PDF
+
 <embed src="/files/pdfs/projects/furuta_pendulum_control.pdf" type="application/pdf" width="100%" height="600px" />
 

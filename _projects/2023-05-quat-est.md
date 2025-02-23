@@ -17,21 +17,16 @@ This leads to the need for **sensor fusion**, which combines multiple sensory da
 
 In this project, a sensor fusion framework is used for estimating the attitude and angular velocity of robot end-effector in constant angular velocity motion. The multi-sensor system consists of an **optical tracker (NDI)** and an **inertial measurement unit (IMU)**, and a mathematical model for **extended Kalman filter (EKF)** is proposed. Experimental results are shown to verify the proposed model and framework.
 
-<!-- The quaternion attitude and angular velocity estimation via **EKF**/**UKF** is implemented in ``ROS 2 C++`` and can be found in <a href="https://github.com/wei-hsuan-cheng/kf_cpp" target="_blank" style="text-decoration: none;"><i class="fab fa-github" style="font-size: 0.85em;"></i><span style="margin-left: 0.13cm; font-size: 0.85em;">kf_cpp</span></a>.
-{: .notice} -->
 
 The quaternion attitude and angular velocity estimation via **EKF**/**UKF** is implemented in ``ROS 2 C++`` and can be found in <a href='https://github.com/wei-hsuan-cheng/kf_cpp' target='_blank' style='text-decoration: none;'><i class='fab fa-github' style=''></i><span style='margin-left: 0.13cm'>kf_cpp</span></a>.
 {: .notice}
 
-Simulate and visualise in ROS 2 RViz2
-======
+
+
+# Simulate and visualise in ROS 2 RViz2
+
 TBD.
 
 # Project report in PDF
 
 <embed src="/files/pdfs/projects/quat_est.pdf" type="application/pdf" width="100%" height="600px" />
-
-
-
-[kf_cpp]: https://github.com/wei-hsuan-cheng/kf_cpp
-

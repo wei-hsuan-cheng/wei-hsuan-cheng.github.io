@@ -67,5 +67,4 @@ Service and leadership
 
 <!-- CV in PDF
 ====== -->
-<!-- <embed src="/files/pdfs/resume/wei_hsuan_cheng_cv.pdf" type="application/pdf" width="100%" height="600px" /> -->
-<embed src="/files/pdfs/resume/cv_v1_2.pdf" type="application/pdf" width="100%" height="600px" />
+<embed src="/files/pdfs/resume/cv_v1_3.pdf" type="application/pdf" width="100%" height="600px" />

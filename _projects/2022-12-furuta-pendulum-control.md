@@ -15,6 +15,6 @@ This project aims to stabilise the Furuta pendulum system by the design of state
 
 
 # Project report in PDF
-
+Download the [project report](/files/pdfs/projects/furuta_pendulum_control.pdf).
 <embed src="/files/pdfs/projects/furuta_pendulum_control.pdf" type="application/pdf" width="100%" height="600px" />
 

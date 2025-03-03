@@ -11,6 +11,8 @@ date: 2023-12-01
 
 # Project overview
 
+> This is a course project of [CSIE5074](https://nol.ntu.edu.tw/nol/coursesearch/print_table.php?course_id=922%20U1070&class=&dpt_code=9210&ser_no=62682&semester=112-1&lang=CH) Robotics, offered by [Prof. Li-Chen Fu](https://www.ntueeacl.com/25351235662594525480-advisor.html) @ NTU EE. I led our team to win the first place of the course competition. My contribution of this work is the CGA theoretical development, robot motion planning, and the project management as a team leader.
+
 We built a supervisory teleoperation kendo robot system. The robot is able to track the opponent’s pose and wait for the operator’s command to attack.
 
 <iframe width="560" height="315" 
@@ -53,7 +55,7 @@ Visualisation, inverse kinematics, and trajectory planning are all handled using
 
 
 # Project report in PDF
-
+Download the [project report](/files/pdfs/projects/kendo_robot.pdf).
 <embed src="/files/pdfs/projects/kendo_robot.pdf" type="application/pdf" width="100%" height="600px" />
 
 [kendo_robot]: https://github.com/wei-hsuan-cheng/kendo_robot

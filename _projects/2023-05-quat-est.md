@@ -28,5 +28,5 @@ The quaternion attitude and angular velocity estimation via **EKF**/**UKF** is i
 TBD.
 
 # Project report in PDF
-
+Download the [project report](/files/pdfs/projects/quat_est.pdf).
 <embed src="/files/pdfs/projects/quat_est.pdf" type="application/pdf" width="100%" height="600px" />

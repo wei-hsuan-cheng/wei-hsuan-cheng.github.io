@@ -67,4 +67,4 @@ Service and leadership
 
 <!-- CV in PDF
 ====== -->
-<embed src="/files/pdfs/resume/cv_v1_3.pdf" type="application/pdf" width="100%" height="600px" />
+<embed src="/files/pdfs/resume/cv_v1_5.pdf" type="application/pdf" width="100%" height="600px" />

@@ -16,7 +16,7 @@ redirect_from:
   />
 </p> -->
 
-**Looking for PhD position in robotics!!**
+<!-- **Looking for PhD position in robotics!!** -->
 
 Hi, this is Wei-Hsuan Cheng (he/him). I am currently a Master's student at [Robots and Medical Mechatronics Lab (RMML)][RMML], [Department of Biomechatronics Engineering][NTUBME], [National Taiwan University (NTU)][NTU], advised by *[Prof. Ping-Lang Yen]*. 
 

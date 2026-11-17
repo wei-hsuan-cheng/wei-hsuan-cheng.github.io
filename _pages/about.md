@@ -31,7 +31,7 @@ My research interests lie in ``robotics``, particularly model-based control and 
 - ``Kalman filtering`` (KF, EKF, UKF, InEKF, etc.)
 - ``Teleoperation`` robotic system through ``wireless communication``
 - Robotic ``dexterous`` manipulations (contact-rich, physical interactions, compliant motions, etc.)
-- Robotic arm ``vision-`` and ``force-``based controls (visual servoing, admittance control, etc.)
+- Robotic arm ``vision-based control`` (visual servoing, 6D pose estimation and tracking)
 - Application of ``geometric algebra`` in robotics
 
 Check out my [projects] and [resume] here. Reach out if you’re intereted in what I’m doing!

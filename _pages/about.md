@@ -18,15 +18,20 @@ redirect_from:
 
 <!-- **Looking for PhD position in robotics!!** -->
 
-Hi, this is Wei-Hsuan Cheng (he/him). I am currently a Master's student at [Robots and Medical Mechatronics Lab (RMML)][RMML], [Department of Biomechatronics Engineering][NTUBME], [National Taiwan University (NTU)][NTU], advised by *[Prof. Ping-Lang Yen]*. 
+Hi, this is Wei-Hsuan Cheng (he/him). I am a robotics researcher (Associate Researcher) at **Delta Robotics Innovation Center (DRIC)**, where I focus primarily on model-based control and estimation methods (e.g. force control, kinematics/dynamics MPC, KF-family) across various robotic embodiments, including dual-arm systems, dexterous hands, mobile manipulators, and integrated combinations of these platforms.
+
+Previously, I completed my Master's degree at [Robots and Medical Mechatronics Lab (RMML)][RMML], [Department of Biomechatronics Engineering][NTUBME], [National Taiwan University (NTU)][NTU], advised by *[Prof. Ping-Lang Yen]*.
 
 - Master's thesis title: *“Application of Vision- and Force-Based Supervisory Teleoperation for Robotic Dexterous Manipulation Tasks in Industrial Surveillance”*
 
-My research interest lies on fields of ``robotics``, particularly in ``robotic arm manipulations``. I have experience in diverse domains in robotics, including and not limited to
+My research interests lie in ``robotics``, particularly model-based control and estimation for manipulation and legged/wheeled-legged locomotion. I have experience in diverse domains in robotics, including but not limited to
+- ``Compliance control`` (force, admittance, and impedance control)
+- ``Model predictive control (MPC)`` (kinematics and dynamics MPC, whole-body inverse-dynamics MPC)
+- ``Whole-body control (WBC)``
+- ``Kalman filtering`` (KF, EKF, UKF, InEKF, etc.)
 - ``Teleoperation`` robotic system through ``wireless communication``
 - Robotic ``dexterous`` manipulations (contact-rich, physical interactions, compliant motions, etc.)
 - Robotic arm ``vision-`` and ``force-``based controls (visual servoing, admittance control, etc.)
-- ``Kalman filtering`` (EKF, UKF, etc.)
 - Application of ``geometric algebra`` in robotics
 
 Check out my [projects] and [resume] here. Reach out if you’re intereted in what I’m doing!

@@ -25,9 +25,9 @@ author:
   avatar           : "profile/whcheng_profile.jpg"
   name             : "Wei-Hsuan Cheng"
   pronouns         : he/him # example: "she/her"  
-  bio              : "Wei-Hsuan Cheng, Robotics, Control, and Geometric Algebra Lover at NTU."
+  bio              : "Associate Researcher at Delta Robotics Innovation Center (DRIC)."
   location         : "Taipei, Taiwan"
-  employer         : "National Taiwan University"
+  employer         : "DRIC" # one line in the sidebar; the bio above gives the full name
   uri              : # URL
   email            : "johnathancheng0125@gmail.com" 
 

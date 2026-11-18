@@ -1,0 +1,52 @@
+# Keeps /robotics-notes/ in step with https://github.com/wei-hsuan-cheng/robotics_notes: renders the notes linked in its
+# README tree with scripts/sync_robotics_notes.py and, only when a page changed, commits the result and rebuilds the site.
+# Runs every 6 hours, and on demand from the Actions tab ("Sync robotics notes" -> "Run workflow").
+name: Sync robotics notes
+
+on:
+  schedule:
+    - cron: "17 */6 * * *"  # 00:17, 06:17, 12:17, 18:17 UTC (08:17, 14:17, 20:17, 02:17 in Taiwan)
+  workflow_dispatch:
+
+permissions:
+  contents: write  # commit the rendered notes
+  pages: write     # request the GitHub Pages build
+
+concurrency:
+  group: sync-robotics-notes
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/checkout@v4
+        with:
+          repository: wei-hsuan-cheng/robotics_notes
+          path: .robotics_notes
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Render the notes
+        run: |
+          pip install --quiet markdown-it-py mdit-py-plugins
+          python3 scripts/sync_robotics_notes.py .robotics_notes
+
+      - name: Commit and rebuild the site if a page changed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git add _robotics_notes _pages/robotics-notes.md
+          if git diff --cached --quiet; then
+            echo "The notes are already up to date."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "sync robotics notes from robotics_notes@$(git -C .robotics_notes rev-parse --short HEAD)"
+          git push
+          gh api --method POST "repos/${{ github.repository }}/pages/builds"

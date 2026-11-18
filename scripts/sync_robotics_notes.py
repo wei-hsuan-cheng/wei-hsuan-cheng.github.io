@@ -14,8 +14,13 @@ markdown-it-py, which follows the same CommonMark rules as GitHub, and the pages
 written as \\( \\) and \\[ \\] for the site's MathJax. Images and links to other files of the repository point at
 GitHub; links between notes stay on the site.
 
+A note that is not in the tree is not on the site (the script lists it); a tree link to a missing file is skipped with a
+warning; two notes with the same file name get their folder in front of the name. Nothing is written unless every
+page renders, so a broken README leaves the site as it was.
+
 Needs: pip install markdown-it-py mdit-py-plugins
-Rerun after changing the notes, then build the site and commit _robotics_notes/ and _pages/robotics-notes.md.
+.github/workflows/sync-robotics-notes.yml runs this every 6 hours (and from the Actions tab) and commits the result
+when a page changed; run it by hand to preview, then commit _robotics_notes/ and _pages/robotics-notes.md.
 """
 import argparse
 import html
@@ -179,18 +184,48 @@ def main():
     parser.add_argument("--branch", default="main")
     args = parser.parse_args()
     repo = args.repo.expanduser().resolve()
-    readme = (repo / "README.md").read_text()
-    index = parse_index(readme)
-    if not index:
-        raise SystemExit(f"no notes listed under 'Repository Layout' in {repo / 'README.md'}")
-    notes_by_path = {posixpath.normpath(path): Path(path).stem.replace("_", "-") for _, _, path in index}
+    readme_path = repo / "README.md"
+    if not readme_path.is_file():
+        raise SystemExit(f"{readme_path} not found; nothing changed")
+    readme = readme_path.read_text()
+    if not re.search(r"^#+\s+Repository Layout", readme, re.M):
+        raise SystemExit(f"no 'Repository Layout' section in {readme_path}; nothing changed")
+
+    # The notes the tree links. A link to a missing file is skipped (its tree entry stays, as plain text).
+    listed, seen = [], set()
+    for categories, short_title, path in parse_index(readme):
+        path = posixpath.normpath(path)
+        if path in seen:
+            continue
+        seen.add(path)
+        if not (repo / path).is_file():
+            print(f"warning: the README tree links {path}, which does not exist; skipped")
+            continue
+        listed.append((categories, short_title, path))
+    if not listed:
+        raise SystemExit(f"no existing notes linked under 'Repository Layout' in {readme_path}; nothing changed")
+    for note in sorted(repo.rglob("*.md")):
+        relative = note.relative_to(repo).as_posix()
+        if relative != "README.md" and not any(part.startswith(".") for part in note.parts) and relative not in seen:
+            print(f"note: {relative} is not in the README tree, so it is not on the site")
+
+    # Page names: the file name, with its folder in front when another note already has that name.
+    notes_by_path, used = {}, set()
+    for _, _, path in listed:
+        stem = Path(path).stem.replace("_", "-").lower()
+        folders = [part.replace("_", "-").lower() for part in Path(path).parent.parts]
+        folder = next((part for part in reversed(folders) if part != stem), "")
+        name = stem if stem not in used or not folder else f"{folder}-{stem}"
+        base, k = name, 2
+        while name in used:
+            name, k = f"{base}-{k}", k + 1
+        used.add(name)
+        notes_by_path[path] = name
     md = make_renderer()
 
-    shutil.rmtree(OUT_DIR, ignore_errors=True)
-    OUT_DIR.mkdir()
-    entries = []
-    for order, (categories, short_title, path) in enumerate(index, start=1):
-        path = posixpath.normpath(path)
+    # Everything is rendered before anything is written, so a failure leaves the site as it was.
+    pages, entries = {}, []
+    for order, (categories, short_title, path) in enumerate(listed, start=1):
         name = notes_by_path[path]
         first_line = next((line for line in (repo / path).read_text().splitlines() if line.strip()), "")
         title = first_line[2:].strip() if first_line.startswith("# ") else short_title
@@ -217,7 +252,7 @@ def main():
             "{% endraw %}",
             "",
         ]
-        (OUT_DIR / f"{name}.html").write_text("\n".join(page))
+        pages[name] = "\n".join(page)
         entries.append((categories, title, name, summary))
         print(f"{URL}{name}/  <-  {path}")
 
@@ -228,7 +263,7 @@ def main():
 
     def site_link(match):
         path = posixpath.normpath(match.group(2))
-        return f"[{match.group(1)}]({URL}{notes_by_path[path]}/)" if path in notes_by_path else match.group(0)
+        return f"[{match.group(1)}]({URL}{notes_by_path[path]}/)" if path in notes_by_path else match.group(1)
 
     toc = re.sub(r"\[([^\]]+)\]\(([^)]+\.md)\)", site_link, layout)
     lines = ["---", 'title: "Robotics Notes"', f"permalink: {URL}", "author_profile: true", "---", "",
@@ -238,6 +273,14 @@ def main():
               "and what builds real insight and taste."), "",
              intro, "", f"The notes live in [{args.github.split('/')[-1]}](https://github.com/{args.github}).", "",
              "## Table of Contents", "", toc]
+
+    staging = OUT_DIR.with_name(OUT_DIR.name + ".new")
+    shutil.rmtree(staging, ignore_errors=True)
+    staging.mkdir()
+    for name, text in pages.items():
+        (staging / f"{name}.html").write_text(text)
+    shutil.rmtree(OUT_DIR, ignore_errors=True)
+    staging.rename(OUT_DIR)
     INDEX_PAGE.write_text("\n".join(lines) + "\n")
     print(f"{URL}  <-  {len(entries)} notes")
 

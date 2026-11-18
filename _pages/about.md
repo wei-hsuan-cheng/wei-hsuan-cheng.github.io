@@ -105,12 +105,12 @@ Previously, I completed my Master's degree at [Robots and Medical Mechatronics L
 
 - Master's thesis title: *“Application of Vision- and Force-Based Supervisory Teleoperation for Robotic Dexterous Manipulation Tasks in Industrial Surveillance”*
 
-My research interests lie in ``robotics``, particularly model predictive control and model-based estimation for manipulation and legged/wheeled-legged locomotion. I have experience in diverse domains in robotics, including but not limited to
+My research interests lie in ``robotics``, particularly model predictive control and model-based estimation for contact-rich/compliant manipulation and legged/wheeled-legged locomotion. I have experience in diverse domains in robotics, including but not limited to
 - ``Model predictive control (MPC)`` (kinematics and dynamics MPC, whole-body inverse-dynamics MPC)
 - ``Whole-body control (WBC)``
-- ``Compliance control`` (force, admittance, and impedance control)
 - ``Kalman filtering`` (KF, EKF, UKF, InEKF, etc.)
 - ``Teleoperation`` robotic system through ``wireless communication``
+- ``Compliance control`` (force, admittance, and impedance control)
 - Robotic ``dexterous`` manipulations (contact-rich, physical interactions, compliant motions, etc.)
 - Robotic arm ``vision-based control`` (visual servoing, 6D pose estimation and tracking)
 - Application of ``geometric algebra`` in robotics

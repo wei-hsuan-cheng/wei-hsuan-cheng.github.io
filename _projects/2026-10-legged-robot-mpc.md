@@ -1,5 +1,5 @@
 ---
-title: "Legged Robot MPC: Whole-Body Inverse-Dynamics MPC for Humanoids and Wheeled Bipeds"
+title: "Legged Robot MPC: Whole-Body Inverse-Dynamics MPC for Humanoids and Wheeled-Bipeds"
 collection: projects
 permalink: /project/2026-10-legged-robot-mpc
 # excerpt: "Short description of project item number 1<br/><img src='/images/500x300.png'>"

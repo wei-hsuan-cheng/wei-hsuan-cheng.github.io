@@ -34,7 +34,7 @@ I build MPC controllers that run in `ros2_control`, from robotic arms to humanoi
     </td>
   </tr>
   <tr>
-    <td align="center"><b><a href="/project/2026-10-legged-robot-mpc">Legged Robot MPC</a></b><br />Whole-body inverse-dynamics MPC for humanoids and wheeled bipeds</td>
+    <td align="center"><b><a href="/project/2026-10-legged-robot-mpc">Legged Robot MPC</a></b><br />Whole-body inverse-dynamics MPC for humanoids and wheeled-bipeds</td>
     <td align="center"><b><a href="/project/2026-06-robotic-arm-dynamics-mpc">Robotic Arm Dynamics MPC</a></b><br />Inverse- and forward-dynamics MPC for robotic arms</td>
   </tr>
 </table>

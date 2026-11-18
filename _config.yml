@@ -27,7 +27,7 @@ author:
   pronouns         : he/him # example: "she/her"  
   bio              : "Associate Researcher at Delta Robotics Innovation Center (DRIC)."
   location         : "Taipei, Taiwan"
-  employer         : "DRIC" # one line in the sidebar; the bio above gives the full name
+  employer         : "<a href=\"https://www.deltaww.com/en-US/company/innovation\" style=\"display: inline;\">DRIC</a>" # one line in the sidebar; the bio above gives the full name
   uri              : # URL
   email            : "johnathancheng0125@gmail.com" 
 

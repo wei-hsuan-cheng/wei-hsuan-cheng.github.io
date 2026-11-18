@@ -1,0 +1,955 @@
+---
+title: "Sequential Linear Quadratic Model Predictive Control (SLQ-MPC)"
+collection: "robotics_notes"
+permalink: "/robotics-notes/slq-mpc/"
+excerpt: "Discrete-time nonlinear optimal control solved by repeated linearization, a Riccati-style backward pass and a line-searched forward rollout, run in a receding-horizon MPC loop."
+categories_path: "MPC / Solver"
+order: 1
+source: "https://github.com/wei-hsuan-cheng/robotics_notes/blob/main/mpc/solver/slq_mpc.md"
+---
+
+{% raw %}
+<p class="notice--info">Rendered from <a href="https://github.com/wei-hsuan-cheng/robotics_notes/blob/main/mpc/solver/slq_mpc.md"><i class="fab fa-github" aria-hidden="true"></i> robotics_notes/mpc/solver/slq_mpc.md</a>.</p>
+
+<p><strong>Contents</strong></p>
+<ul>
+<li><a href="#1-nonlinear-optimal-control-problem-discrete-time">1. Nonlinear optimal control problem (discrete time)</a></li>
+<li><a href="#2-nominal-trajectory-and-deviation-variables">2. Nominal trajectory and deviation variables</a></li>
+<li><a href="#3-linearization-of-the-dynamics">3. Linearization of the dynamics</a></li>
+<li><a href="#4-quadratic-expansion-of-the-cost">4. Quadratic expansion of the cost</a></li>
+<li><a href="#5-value-function-and-bellman-equation">5. Value function and Bellman equation</a></li>
+<li><a href="#6-q-function-cost-to-go-for-one-step-and-bellman-minimization">6. Q-function (cost-to-go for one step) and Bellman minimization</a></li>
+<li><a href="#7-principle-of-optimality-minimize-the-quadratic-in">7. Principle of optimality: minimize the quadratic in <span class="math inline">\(\delta u_k\)</span></a></li>
+<li><a href="#8-backward-recursion-for-the-value-function-coefficients">8. Backward recursion for the value function coefficients</a></li>
+<li><a href="#9-forward-rollout-and-line-search-one-slq-iteration">9. Forward rollout and line search (one SLQ iteration)</a></li>
+<li><a href="#10-slq-mpc-using-ilqr-in-a-receding-horizon-loop">10. SLQ-MPC: using iLQR in a receding-horizon loop</a></li>
+<li><a href="#11-summary-cost-structure-per-iteration-level">11. Summary: Cost structure per iteration level</a></li>
+<li><a href="#12-appendices">12. Appendices</a></li>
+</ul>
+<hr />
+
+<ul>
+<li>Reference literature for SLQ-MPC
+<ul>
+<li><a name="icra16">[1]</a> <a href="https://ieeexplore.ieee.org/document/7487274">(ICRA2016) Fast nonlinear Model Predictive Control for unified trajectory optimization and tracking</a></li>
+<li><a name="icra17">[2]</a> <a href="https://ieeexplore.ieee.org/document/7989016">(ICRA2017) An Efficient Optimal Planning and Control Framework For Quadrupedal Locomotion</a></li>
+</ul>
+</li>
+</ul>
+<hr />
+<h2 id="1-nonlinear-optimal-control-problem-discrete-time">1. Nonlinear optimal control problem (discrete time)</h2>
+<p>We start with a <strong>discrete-time</strong> nonlinear system
+<span class="math display">\[
+    x_{k+1} = f(x_k, u_k), \qquad k = 0,\dots,N-1,
+\]</span></p>
+<p>and a finite-horizon cost</p>
+<div class="math display">\[
+    \mathcal{J}
+    = h(x_N) + \sum_{k=0}^{N-1} \ell(x_k, u_k).
+\]</div>
+<p>Goal:<br />
+Find a control sequence <span class="math inline">\(u_0,\dots,u_{N-1}\)</span> that <strong>minimizes</strong> <span class="math inline">\(\mathcal{J}\)</span> subject to the dynamics.</p>
+<p>SLQ/iLQR solves this <strong>iteratively</strong> by locally approximating the problem as LQ and using dynamic programming (Bellman).</p>
+<hr />
+<h2 id="2-nominal-trajectory-and-deviation-variables">2. Nominal trajectory and deviation variables</h2>
+<p>At iteration <span class="math inline">\(i\)</span>, we have a <strong>nominal trajectory</strong>
+<span class="math display">\[
+    \{x_k^n, u_k^n\}_{k=0}^{N-1}, \qquad x_0^n \text{ given}.
+\]</span></p>
+<p>We work in <strong>deviation coordinates</strong> around this trajectory:
+<span class="math display">\[
+    \delta x_k := x_k - x_k^n,
+    \qquad
+    \delta u_k := u_k - u_k^n.
+\]</span></p>
+<p>We will compute increments <span class="math inline">\(\delta u_k\)</span> (and thus update <span class="math inline">\(u_k^{\text{new}} = u_k^n + \delta u_k\)</span>) to reduce the cost.</p>
+<hr />
+<h2 id="3-linearization-of-the-dynamics">3. Linearization of the dynamics</h2>
+<p>Linearize the nonlinear dynamics around <span class="math inline">\((x_k^n, u_k^n)\)</span>:
+<span class="math display">\[
+    f(x_k, u_k) \approx f(x_k^n, u_k^n) 
+    + A_k (x_k - x_k^n) 
+    + B_k (u_k - u_k^n),
+\]</span></p>
+<p>with Jacobians
+<span class="math display">\[
+    A_k := \left.\frac{\partial f}{\partial x}\right|_{(x_k^n, u_k^n)},
+    \qquad
+    B_k := \left.\frac{\partial f}{\partial u}\right|_{(x_k^n, u_k^n)}.
+\]</span></p>
+<p>Because the nominal satisfies
+<span class="math display">\[
+    x_{k+1}^n = f(x_k^n, u_k^n),
+\]</span></p>
+<p>the constant term cancels, and we obtain the <strong>linearized deviation dynamics</strong></p>
+<div class="math display">\[
+    \boxed{
+    \delta x_{k+1} = A_k \delta x_k + B_k \delta u_k.
+    }
+\]</div>
+<p>This is a linear time-varying (LTV) system.</p>
+<hr />
+<h2 id="4-quadratic-expansion-of-the-cost">4. Quadratic expansion of the cost</h2>
+<h3 id="41-stage-cost-expansion">4.1 Stage cost expansion</h3>
+<p>Second-order Taylor expansion of the stage cost <span class="math inline">\(\ell(x_k,u_k)\)</span> at <span class="math inline">\((x_k^n,u_k^n)\)</span>:
+<span class="math display">\[
+    \begin{aligned}
+    \ell(x_k,u_k)
+    &amp;\approx \ell_k^n
+    + \ell_{x,k}^\top \delta x_k
+    + \ell_{u,k}^\top \delta u_k \\
+    &amp;\quad
+    + \tfrac12\,\delta x_k^\top L_{xx,k}\,\delta x_k
+    + \delta x_k^\top L_{xu,k}\,\delta u_k
+    + \tfrac12\,\delta u_k^\top L_{uu,k}\,\delta u_k.
+    \end{aligned}
+\]</span></p>
+<p>SLQ (as used in the paper) uses a <strong>Gauss–Newton style approximation</strong> and typically:</p>
+<ul>
+<li>for common tracking costs there is <strong>no explicit <span class="math inline">\(x\)</span>-<span class="math inline">\(u\)</span> cross term</strong>, so <span class="math inline">\(L_{xu,k}=0\)</span> exactly, or</li>
+<li>simply <strong>drops</strong> <span class="math inline">\(L_{xu,k}\)</span> to keep the structure LQR-like.</li>
+</ul>
+<p>So we approximate
+<span class="math display">\[
+L_{xu,k} \approx 0,
+\]</span></p>
+<p>giving
+<span class="math display">\[
+    \ell(x_k,u_k)
+    \approx
+    \ell_k^n
+    + \ell_{x,k}^\top \delta x_k
+    + \ell_{u,k}^\top \delta u_k
+    + \tfrac12\,\delta x_k^\top L_{xx,k}\,\delta x_k
+    + \tfrac12\,\delta u_k^\top L_{uu,k}\,\delta u_k.
+\]</span></p>
+<p>Define the <strong>LQ coefficients</strong>:
+<span class="math display">\[
+    Q_k := L_{xx,k},\quad
+    R_k := L_{uu,k},\quad
+    q_k := \ell_{x,k},\quad
+    r_k := \ell_{u,k}.
+\]</span></p>
+<p>Then
+<span class="math display">\[
+    \boxed{
+    \ell(x_k,u_k) \approx
+    \ell_k^n
+    + q_k^\top \delta x_k
+    + r_k^\top \delta u_k
+    + \tfrac12\,\delta x_k^\top Q_k \delta x_k
+    + \tfrac12\,\delta u_k^\top R_k \delta u_k.
+    }
+\]</span></p>
+<h3 id="42-terminal-cost-expansion">4.2 Terminal cost expansion</h3>
+<p>Similarly, expand the terminal cost <span class="math inline">\(h(x_N)\)</span> at <span class="math inline">\(x_N^n\)</span>:
+<span class="math display">\[
+    h(x_N) \approx h_N^n
+    + h_{x,N}^\top \delta x_N
+    + \tfrac12\,\delta x_N^\top H_N \delta x_N,
+\]</span></p>
+<p>and define
+<span class="math display">\[
+    P_N := H_N, \qquad p_N := h_{x,N}.
+\]</span></p>
+<p>These are the <strong>boundary conditions</strong> for the value-function recursion.</p>
+<hr />
+<h2 id="5-value-function-and-bellman-equation">5. Value function and Bellman equation</h2>
+<h3 id="51-original-value-function">5.1 Original value function</h3>
+<p>For the discrete-time problem, the <strong>value function</strong> at time <span class="math inline">\(k\)</span> is
+<span class="math display">\[
+V_k(x) := \min_{u_k,\dots,u_{N-1}}
+\left[
+h(x_N) + \sum_{i=k}^{N-1} \ell(x_i,u_i)
+\right],
+\]</span>
+subject to the dynamics starting from <span class="math inline">\(x_k = x\)</span>.</p>
+<p>The <strong>value function</strong> tells:</p>
+<blockquote>
+<p>If at time <span class="math inline">\(𝑘\)</span> I am in state <span class="math inline">\(x\)</span>, what is the <em>minimum possible future cost</em> I can achieve, assuming I <em>act optimally</em> from now on?”</p>
+</blockquote>
+<p>The <strong>Bellman equation</strong> (principle of optimality) is
+<span class="math display">\[
+V_k(x) = \min_{u}
+\big[\,\ell(x,u) + V_{k+1}(f(x,u))\,\big].
+\]</span>
+At the final time <span class="math inline">\(N\)</span>:
+<span class="math display">\[
+V_N(x) = h(x).
+\]</span></p>
+<p>This <strong>principle of optimality</strong> is crucial:</p>
+<blockquote>
+<p><em>Whatever the optimal strategy from now to the end is, its first action plus the optimal strategy afterwards must jointly be optimal.</em><br />
+Mathematically, this is encoded in the Bellman equation.</p>
+</blockquote>
+<h3 id="52-local-quadratic-approximation-of-the-value-function">5.2 Local quadratic approximation of the value function</h3>
+<p>We approximate <span class="math inline">\(V_k\)</span> <strong>locally</strong> around the nominal state <span class="math inline">\(x_k^n\)</span>.<br />
+Define <span class="math inline">\(\delta x_k := x_k - x_k^n\)</span> and write a second-order Taylor expansion:
+<span class="math display">\[
+    V_k(x_k^n + \delta x_k)
+    \approx
+    s_k + p_k^\top \delta x_k
+    + \tfrac12\,\delta x_k^\top P_k \delta x_k,
+\]</span></p>
+<p>where we define
+<span class="math display">\[
+    s_k := V_k(x_k^n),
+    \quad
+    p_k := \left.\frac{\partial V_k}{\partial x}\right|_{x_k^n},
+    \quad
+    P_k := \left.\frac{\partial^2 V_k}{\partial x^2}\right|_{x_k^n}.
+\]</span></p>
+<p>For brevity, we denote this as
+<span class="math display">\[
+    \boxed{
+    V_k(\delta x_k) \approx
+    s_k + p_k^\top \delta x_k
+    + \tfrac12\,\delta x_k^\top P_k \delta x_k,
+    }
+\]</span></p>
+<p>where <span class="math inline">\(V_k(\delta x_k) := V_k(x_k^n + \delta x_k)\)</span> for notation simplicity.</p>
+<hr />
+<h2 id="6-q-function-cost-to-go-for-one-step-and-bellman-minimization">6. Q-function (cost-to-go for one step) and Bellman minimization</h2>
+<p>To avoid confusion with the matrix <span class="math inline">\(Q_k\)</span>, we denote the <strong>dynamic programming Q-function</strong> by:
+<span class="math display">\[
+\mathcal{Q}_k(\delta x_k,\delta u_k)
+:= \ell(x_k,u_k) + V_{k+1}(\delta x_{k+1}),
+\]</span>
+with
+<span class="math display">\[
+\delta x_{k+1} = A_k \delta x_k + B_k \delta u_k.
+\]</span></p>
+<p>From the Bellman equation:
+<span class="math display">\[
+V_k(\delta x_k) = \min_{\delta u_k} \mathcal{Q}_k(\delta x_k,\delta u_k).
+\]</span></p>
+<h3 id="61-substitute-expansions">6.1 Substitute expansions</h3>
+<p>Stage cost:
+<span class="math display">\[
+    \ell(x_k,u_k) \approx
+    \ell_k^n
+    + q_k^\top \delta x_k
+    + r_k^\top \delta u_k
+    + \tfrac12\,\delta x_k^\top Q_k \delta x_k
+    + \tfrac12\,\delta u_k^\top R_k \delta u_k.
+\]</span></p>
+<p>Next value function (using linearized dynamics):
+<span class="math display">\[
+    \begin{aligned}
+    V_{k+1}(\delta x_{k+1})
+    &amp;\approx s_{k+1} + p_{k+1}^\top \delta x_{k+1}
+    + \tfrac12\,\delta x_{k+1}^\top P_{k+1}\delta x_{k+1} \\[0.3em]
+    &amp;= s_{k+1}
+    + p_{k+1}^\top (A_k\delta x_k + B_k\delta u_k) \\
+    &amp;\quad + \tfrac12 (A_k\delta x_k + B_k\delta u_k)^\top
+    P_{k+1}(A_k\delta x_k + B_k\delta u_k).
+    \end{aligned}
+\]</span></p>
+<p>Expand the quadratic term:
+<span class="math display">\[
+    \begin{aligned}
+    &amp;\tfrac12 (A_k\delta x_k + B_k\delta u_k)^\top
+    P_{k+1}(A_k\delta x_k + B_k\delta u_k) \\
+    &amp;= \tfrac12\,\delta x_k^\top A_k^\top P_{k+1}A_k \delta x_k
+    + \tfrac12\,\delta u_k^\top B_k^\top P_{k+1}B_k \delta u_k \\
+    &amp;\quad + \delta u_k^\top B_k^\top P_{k+1}A_k \delta x_k.
+    \end{aligned}
+\]</span></p>
+<p>Putting everything into <span class="math inline">\(\mathcal{Q}_k\)</span>:
+<span class="math display">\[
+\begin{aligned}
+\mathcal{Q}_k(\delta x_k,\delta u_k)
+&amp;= \ell(x_k,u_k) + V_{k+1}(\delta x_{k+1}) \\
+&amp;\approx \text{const.} \\
+&amp;\quad + \delta x_k^\top \big(q_k + A_k^\top p_{k+1}\big) \\
+&amp;\quad + \delta u_k^\top \big(r_k + B_k^\top p_{k+1}\big) \\
+&amp;\quad + \tfrac12\,\delta x_k^\top \big(Q_k + A_k^\top P_{k+1}A_k\big)\delta x_k \\
+&amp;\quad + \tfrac12\,\delta u_k^\top \big(R_k + B_k^\top P_{k+1}B_k\big)\delta u_k \\
+&amp;\quad + \delta u_k^\top \big(B_k^\top P_{k+1}A_k\big)\delta x_k.
+\end{aligned}
+\]</span></p>
+<p>Define:
+<span class="math display">\[
+    \begin{aligned}
+    H_k &amp;:= R_k + B_k^\top P_{k+1}B_k, \\
+    G_k &amp;:= B_k^\top P_{k+1}A_k, \\
+    g_k &amp;:= r_k + B_k^\top p_{k+1}, \\
+    \tilde{Q}_k &amp;:= Q_k + A_k^\top P_{k+1}A_k, \\
+    \tilde{q}_k &amp;:= q_k + A_k^\top p_{k+1}.
+    \end{aligned}
+\]</span></p>
+<p>Then the Q-function can be written as
+<span class="math display">\[
+    \boxed{
+    \begin{aligned}
+    \mathcal{Q}_k(\delta x_k,\delta u_k)
+    &amp;= \text{const.}
+    + \tfrac12\,\delta u_k^\top H_k\,\delta u_k
+    + \delta u_k^\top (G_k\delta x_k + g_k) \\
+    &amp;\quad + \tfrac12\,\delta x_k^\top \tilde{Q}_k \delta x_k
+    + \delta x_k^\top \tilde{q}_k.
+    \end{aligned}
+    }
+\]</span></p>
+<hr />
+<h2 id="7-principle-of-optimality-minimize-the-quadratic-in">7. Principle of optimality: minimize the quadratic in <span class="math inline">\(\delta u_k\)</span></h2>
+<p>By the <strong>Bellman equation</strong>,
+<span class="math display">\[
+    V_k(\delta x_k) = \min_{\delta u_k} \mathcal{Q}_k(\delta x_k,\delta u_k).
+\]</span></p>
+<p>We have a <strong>quadratic function in <span class="math inline">\(\delta u_k\)</span></strong>:
+<span class="math display">\[
+    \mathcal{Q}_k(\delta x_k,\delta u_k)
+    = \tfrac12\,\delta u_k^\top H_k\delta u_k
+    + \delta u_k^\top (G_k\delta x_k + g_k)
+    + (\text{terms independent of }\delta u_k).
+\]</span></p>
+<p>The <strong>principle of optimality</strong> says:</p>
+<blockquote>
+<p>The optimal control at time <span class="math inline">\(k\)</span> <em>minimizes the cost-to-go from that point onward</em>.</p>
+</blockquote>
+<p>So we set the gradient w.r.t. <span class="math inline">\(\delta u_k\)</span> to zero:
+<span class="math display">\[
+    \frac{\partial \mathcal{Q}_k}{\partial \delta u_k}
+    = H_k\delta u_k + G_k\delta x_k + g_k = 0.
+\]</span></p>
+<p>Solve for <span class="math inline">\(\delta u_k\)</span>:
+<span class="math display">\[
+    \boxed{
+    \delta u_k^\star
+    = l_k + K_k \delta x_k,
+    \quad
+    K_k := -H_k^{-1}G_k,
+    \quad
+    l_k := -H_k^{-1}g_k.
+    }
+\]</span></p>
+<ul>
+<li><span class="math inline">\(K_k\)</span> is the <strong>feedback gain</strong> (same form as LQR).</li>
+<li><span class="math inline">\(l_k\)</span> is the <strong>feedforward increment</strong> (appears because we have nonzero gradients <span class="math inline">\(r_k\)</span> and <span class="math inline">\(p_{k+1}\)</span>, <em>i.e.</em>, tracking/nonzero nominal).</li>
+</ul>
+<p>This is the <strong>optimal affine control law</strong> for the local LQ subproblem at time <span class="math inline">\(k\)</span>.</p>
+<hr />
+<h2 id="8-backward-recursion-for-the-value-function-coefficients">8. Backward recursion for the value function coefficients</h2>
+<p>We now plug the optimal law <span class="math inline">\(\delta u_k^\star\)</span> back into <span class="math inline">\(\mathcal{Q}_k\)</span> and identify the resulting expression as the new value function:
+<span class="math display">\[
+    V_k(\delta x_k) = \min_{\delta u_k} \mathcal{Q}_k(\delta x_k,\delta u_k)
+    = \mathcal{Q}_k(\delta x_k,\delta u_k^\star).
+\]</span></p>
+<p>We know that we want
+<span class="math display">\[
+    V_k(\delta x_k)
+    \approx s_k + p_k^\top \delta x_k
+    + \tfrac12\,\delta x_k^\top P_k \delta x_k.
+\]</span></p>
+<p>By expanding <span class="math inline">\(\mathcal{Q}_k(\delta x_k,\delta u_k^\star)\)</span> and matching coefficients of <span class="math inline">\(\delta x_k\)</span> and <span class="math inline">\(\delta x_k \delta x_k^\top\)</span>, we obtain the <strong>Riccati-like backward recursions</strong>:
+<span class="math display">\[
+    \boxed{
+    \begin{aligned}
+    P_k
+    &amp;= \tilde{Q}_k
+    + K_k^\top H_k K_k
+    + K_k^\top G_k
+    + G_k^\top K_k, \\[0.3em]
+    p_k
+    &amp;= \tilde{q}_k
+    + K_k^\top H_k l_k
+    + G_k^\top l_k
+    + K_k^\top g_k.
+    \end{aligned}
+    }
+\]</span></p>
+<p>(Scalar offsets <span class="math inline">\(s_k\)</span> also update but do not affect the policy, so often omitted.)</p>
+<p>Together with the boundary conditions <span class="math inline">\(P_N = H_N,\, p_N = h_{x,N}\)</span>, this defines a <strong>backward pass</strong>:</p>
+<ol>
+<li>Start from <span class="math inline">\(k=N\)</span>: known <span class="math inline">\(P_N, p_N\)</span>.</li>
+<li>For <span class="math inline">\(k=N-1,\dots,0\)</span>:
+<ul>
+<li>Compute <span class="math inline">\(H_k, G_k, g_k\)</span>.</li>
+<li>Compute <span class="math inline">\(K_k, l_k\)</span>.</li>
+<li>Update <span class="math inline">\(P_k, p_k\)</span>.</li>
+</ul>
+</li>
+</ol>
+<p>This is the SLQ/iLQR <strong>Riccati backward sweep</strong>.</p>
+<hr />
+<h2 id="9-forward-rollout-and-line-search-one-slq-iteration">9. Forward rollout and line search (one SLQ iteration)</h2>
+<p>One <strong>SLQ (iLQR) iteration</strong> consists of:</p>
+<ol>
+<li>
+<p><strong>Forward rollout (nonlinear)</strong><br />
+Given current control law (nominal) <span class="math inline">\(u_k^n\)</span>, simulate the <strong>nonlinear</strong> dynamics
+<span class="math display">\[
+ x_{k+1}^n = f(x_k^n, u_k^n)
+\]</span>
+from the current initial state to get the nominal trajectory <span class="math inline">\(\{x_k^n, u_k^n\}\)</span>.</p>
+</li>
+<li>
+<p><strong>Backward pass (LQ subproblem)</strong></p>
+<ul>
+<li>Linearize dynamics: <span class="math inline">\(A_k,B_k\)</span>.</li>
+<li>Quadratize cost: <span class="math inline">\(Q_k,R_k,q_k,r_k\)</span>.</li>
+<li>Run the Riccati-like backward recursion to compute <span class="math inline">\(K_k, l_k\)</span>.</li>
+</ul>
+</li>
+<li>
+<p><strong>Policy update via line search</strong><br />
+Using the affine law <span class="math inline">\(\delta u_k = l_k + K_k\delta x_k\)</span>, define the <strong>candidate control law</strong> for a step size <span class="math inline">\(\alpha \in (0,1]\)</span>:
+<span class="math display">\[
+ u_k^{\text{cand}}(\alpha)
+ = u_k^n + \alpha\, l_k + K_k\big(x_k^{\text{cand}}(\alpha) - x_k^n\big).
+\]</span>
+Here <span class="math inline">\(\alpha\)</span> scales only the feedforward increment <span class="math inline">\(l_k\)</span>, while <span class="math inline">\(K_k\)</span> is kept fixed and is used during the rollout to stabilize deviations.</p>
+<p>Roll out the nonlinear dynamics with this candidate law, compute the new cost <span class="math inline">\(\mathcal{J}_{\text{cand}}(\alpha)\)</span>, and use a <strong>line search</strong> on <span class="math inline">\(\alpha\)</span> until the cost decreases sufficiently.</p>
+</li>
+<li>
+<p>Set <span class="math inline">\(\{x_k^n, u_k^n\}\)</span> to the new trajectory and repeat until convergence (or max iterations).</p>
+</li>
+</ol>
+<p>At convergence you obtain a locally optimal <strong>time-varying affine feedback policy</strong>:
+<span class="math display">\[
+    u_k(x_k) = u_k^n + l_k + K_k(x_k - x_k^n).
+\]</span></p>
+<p>This is iLQR/SLQ as a solver for the <strong>single-shot</strong> finite-horizon nonlinear OCP.</p>
+<h3 id="the-loop">The loop</h3>
+<div class="math display">\[\{x_k^n, u_k^n\}^{(i)} \;\xrightarrow{\text{linearize/quadratize}}\; \{A_k, B_k, Q_k, R_k, q_k, r_k\} \;\xrightarrow{\text{backward}}\; \{K_k, l_k\} \;\xrightarrow{\text{rollout}(\alpha)}\; \{x_k^n, u_k^n\}^{(i+1)}\]</div>
+<h3 id="convergence">Convergence</h3>
+<p>Stop when <span class="math inline">\(\|l_k\| &lt; \epsilon\)</span> for all <span class="math inline">\(k\)</span> (equivalently <span class="math inline">\(g_k \approx 0\)</span>, stationarity) or <span class="math inline">\(|\Delta \mathcal{J}| &lt; \epsilon_J\)</span>. At convergence the feedforward vanishes and the converged policy is the time-varying affine law:</p>
+<div class="math display">\[u_k(x_k) = u_k^n + l_k + K_k(x_k - x_k^n) \;\xrightarrow{\;l_k \to 0\;}\; u_k^n + K_k(x_k - x_k^n)\]</div>
+<hr />
+<h2 id="10-slq-mpc-using-ilqr-in-a-receding-horizon-loop">10. SLQ-MPC: using iLQR in a receding-horizon loop</h2>
+<p>SLQ-MPC wraps the SLQ solver inside an <strong>MPC loop</strong>:</p>
+<ol>
+<li>
+<p>At real time <span class="math inline">\(t\)</span>, measure the current state <span class="math inline">\(x(t)\)</span>.<br />
+Set it as the initial state <span class="math inline">\(x_0^n\)</span> for the SLQ problem.</p>
+</li>
+<li>
+<p>Define a horizon of <span class="math inline">\(N\)</span> steps (or time <span class="math inline">\(T\)</span>) and a cost
+<span class="math display">\[
+     \mathcal{J}
+     = (\tilde{x}_N)^\top H \tilde{x}_N
+     + \sum_{k=0}^{N-1}
+         \big[
+         \tilde{x}_k^\top Q\,\tilde{x}_k
+         + \tilde{u}_k^\top R\,\tilde{u}_k
+         + W(x_k,k)
+         \big],
+\]</span>
+where <span class="math inline">\(\tilde{x}_k = x_k - x_k^{\text{ref}}\)</span>, <span class="math inline">\(\tilde{u}_k = u_k - u_k^{\text{ref}}\)</span>, and <span class="math inline">\(W\)</span> may include waypoint penalties.</p>
+</li>
+<li>
+<p><strong>Initialize the control law</strong>:</p>
+<ul>
+<li>Use an LQR/PD law or the solution from the <strong>previous MPC step</strong> as the initial <span class="math inline">\(\{u_k^n\}\)</span>.</li>
+</ul>
+</li>
+<li>
+<p><strong>Run a few SLQ iterations</strong>:</p>
+<ul>
+<li>Forward rollout, linearization, quadratization.</li>
+<li>Backward pass using Bellman (Riccati recursion, optimal affine increments <span class="math inline">\(\delta u_k\)</span>).</li>
+<li>Line search update of <span class="math inline">\(u_k^n\)</span>.</li>
+</ul>
+</li>
+<li>
+<p><strong>Apply only the first control</strong>:
+<span class="math display">\[
+ u_{\text{applied}}(t) = u_0^{\star}
+\]</span>
+(possibly plus feedback <span class="math inline">\(K_0(x(t)-x_0^n)\)</span>).</p>
+</li>
+<li>
+<p><strong>Shift the horizon</strong> and repeat at the next time step:</p>
+<ul>
+<li>New state measurement <span class="math inline">\(x(t+\Delta t)\)</span>.</li>
+<li>Use previous solution shifted in time as a warm start for <span class="math inline">\(\{x_k^n,u_k^n\}\)</span>.</li>
+<li>Run SLQ again (usually only a few iterations needed if warm-started).</li>
+</ul>
+</li>
+</ol>
+<p>Additionally, as in the paper, you can:</p>
+<ul>
+<li>Use an <strong>infinite-horizon LQR</strong> around the goal state to compute a terminal cost matrix <span class="math inline">\(H = P_{\infty}\)</span>, which serves as a good terminal cost for SLQ.</li>
+<li>This approximates the cost-to-go <strong>beyond</strong> the MPC horizon and improves stability.</li>
+</ul>
+<p>Thus:</p>
+<ul>
+<li><strong>Inside each MPC step</strong>: SLQ/iLQR uses <strong>Bellman’s principle</strong> and local quadratic approximations to compute a locally optimal affine law over the finite horizon.</li>
+<li><strong>Across time</strong>: MPC uses the first control of that law, moves the horizon, and recomputes, leading to an online receding-horizon nonlinear controller.</li>
+</ul>
+<hr />
+<h2 id="11-summary-cost-structure-per-iteration-level">11. Summary: Cost structure per iteration level</h2>
+<p>There will be totally four loops involved in the SLQ-MPC:</p>
+<table>
+<thead>
+<tr>
+<th>Loop</th>
+<th>Iterates over</th>
+<th>Work per step</th>
+<th>Produces</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Backward pass</td>
+<td><span class="math inline">\(k\)</span>: <span class="math inline">\(N-1 \to 0\)</span>, once</td>
+<td>matrix algebra, one <span class="math inline">\(H_k^{-1}\)</span></td>
+<td><span class="math inline">\(\{K_k, l_k\}\)</span>, <span class="math inline">\((P_k, p_k)\)</span></td>
+</tr>
+<tr>
+<td>Line search</td>
+<td><span class="math inline">\(\alpha\)</span>: few trials (<span class="math inline">\(1, \tfrac{1}{2}, \tfrac{1}{4}, \dots\)</span>)</td>
+<td>one full nonlinear rollout over <span class="math inline">\(k\)</span> each</td>
+<td>accepted <span class="math inline">\(\alpha\)</span>, new <span class="math inline">\(\{x_k^n, u_k^n\}\)</span></td>
+</tr>
+<tr>
+<td>Outer (SLQ)</td>
+<td><span class="math inline">\(i\)</span>: until converged (or max iters)</td>
+<td>1 linearization + 1 backward pass + line search</td>
+<td>monotonically decreasing <span class="math inline">\(\mathcal{J}\)</span></td>
+</tr>
+<tr>
+<td>MPC (receding horizon)</td>
+<td><span class="math inline">\(t\)</span>: every control cycle</td>
+<td>measure <span class="math inline">\(x(t)\)</span>, warm-start, few outer iters, apply <span class="math inline">\(u_0^\star\)</span>, shift</td>
+<td>closed-loop control <span class="math inline">\(u_{\text{applied}}(t)\)</span></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="12-appendices">12. Appendices</h2>
+<details>
+<summary>🔽 Appendix A: Line search and the role of feedback in SLQ/iLQR</summary>
+<p>You already have the local optimal <strong>incremental</strong> law from the backward pass:
+<span class="math display">\[
+    \delta u_k^\star = l_k + K_k\,\delta x_k,
+    \qquad \delta x_k = x_k - x_k^n.
+\]</span></p>
+<p>This is the solution of the <strong>local</strong> LQ subproblem (linearized dynamics + quadratized cost). Now we need to use it to update the <strong>nominal control sequence</strong> and generate a new trajectory on the <strong>true nonlinear system</strong>.</p>
+<p>There are two closely-related notions here:</p>
+<ol>
+<li><strong>Feedback vs feedforward</strong></li>
+<li><strong>Line search in the feedforward direction <span class="math inline">\(\alpha\)</span></strong></li>
+</ol>
+<h3 id="a1-where-does-the-feedback-term-go">A.1 Where does the feedback term go?</h3>
+<p>At iteration <span class="math inline">\(i\)</span>, you have:</p>
+<ul>
+<li>Nominal trajectory: <span class="math inline">\(\{x_k^n, u_k^n\}\)</span></li>
+<li>New increments: <span class="math inline">\(\delta u_k^\star = l_k + K_k\,\delta x_k\)</span></li>
+</ul>
+<p>When you <strong>roll out</strong> the new candidate trajectory on the nonlinear system, you don’t know in advance what the new state <span class="math inline">\(x_k\)</span> will be (because the dynamics are nonlinear). So you <strong>use the policy</strong> during the forward simulation:</p>
+<ol>
+<li>
+<p>Start from the actual initial state:
+<span class="math display">\[
+ x_0^{\text{cand}} = x_0^{\text{current}}.
+\]</span></p>
+</li>
+<li>
+<p>At each time step <span class="math inline">\(k\)</span> of the rollout:</p>
+<ul>
+<li>Compute the state deviation:
+<span class="math display">\[
+   \delta x_k = x_k^{\text{cand}} - x_k^n.
+\]</span></li>
+<li>Compute the control <em>increment</em> using the affine law:
+<span class="math display">\[
+   \delta u_k = l_k + K_k\,\delta x_k.
+\]</span></li>
+<li>Update the control:
+<span class="math display">\[
+   u_k^{\text{cand}} = u_k^n + \delta u_k.
+\]</span></li>
+<li>Apply <span class="math inline">\(u_k^{\text{cand}}\)</span> to the <strong>nonlinear</strong> dynamics and get
+<span class="math display">\[
+   x_{k+1}^{\text{cand}} = f\big(x_k^{\text{cand}}, u_k^{\text{cand}}\big).
+\]</span></li>
+</ul>
+</li>
+</ol>
+<p>So in full, <strong>with no line search</strong>, the candidate control during rollout is:
+<span class="math display">\[
+    u_k^{\text{cand}} = u_k^n + l_k + K_k \big(x_k^{\text{cand}} - x_k^n\big).
+\]</span></p>
+<blockquote>
+<p>🔹 The <strong>feedback term</strong> <span class="math inline">\(K_k(x_k^{\text{cand}} - x_k^n)\)</span> is <em>always present</em> in the forward rollout.<br />
+🔹 The SLQ backward pass gives you both <span class="math inline">\(l_k\)</span> and <span class="math inline">\(K_k\)</span>; you use the full law during rollout.</p>
+</blockquote>
+<p>When we later introduce the step size <span class="math inline">\(\alpha\)</span>, <strong>we only scale the feedforward part <span class="math inline">\(l_k\)</span></strong>, not the feedback:</p>
+<div class="math display">\[
+    u_k^{\text{cand}}(\alpha)
+    = u_k^n + \alpha\, l_k + K_k\big(x_k^{\text{cand}}(\alpha) - x_k^n\big).
+\]</div>
+<ul>
+<li><span class="math inline">\(K_k\)</span> stays unchanged (it’s the local stabilizing feedback for the LQ subproblem).</li>
+<li><span class="math inline">\(\alpha\)</span> scales the <strong>step size</strong> in the direction of the feedforward increment <span class="math inline">\(l_k\)</span>.</li>
+</ul>
+<h3 id="a2-what-is--and-what-is-line-search">A.2 What is <span class="math inline">\(\alpha\)</span> and what is “line search”?</h3>
+<p>After the backward pass, you have a <strong>search direction</strong> in control space, given by the sequence <span class="math inline">\(\{l_k\}_{k=0}^{N-1}\)</span>:</p>
+<ul>
+<li>Think of all <span class="math inline">\(u_k\)</span> stacked into a big vector <span class="math inline">\(u\)</span>,</li>
+<li>All <span class="math inline">\(l_k\)</span> stacked into a big vector <span class="math inline">\(l\)</span>,</li>
+<li>Then the new control candidate is
+<span class="math display">\[
+  u^{\text{cand}}(\alpha) = u^n + \alpha\,l \quad(\text{plus feedback corrections in rollout}).
+\]</span></li>
+</ul>
+<p>This is exactly the idea of <strong>line search</strong> in optimization:</p>
+<blockquote>
+<p>We move along a direction <span class="math inline">\(l\)</span> from our current point <span class="math inline">\(u^n\)</span>, and we choose how far to move by tuning the scalar step size <span class="math inline">\(\alpha &gt; 0\)</span>.</p>
+</blockquote>
+<p>Concretely:</p>
+<ol>
+<li>You start with <span class="math inline">\(\alpha = 1\)</span> (a “full” step).</li>
+<li>You perform a forward rollout using
+<span class="math display">\[
+ u_k^{\text{cand}}(\alpha)
+ = u_k^n + \alpha\, l_k + K_k\big(x_k^{\text{cand}}(\alpha) - x_k^n\big).
+\]</span></li>
+<li>You compute the new cost <span class="math inline">\(\mathcal{J}(\alpha)\)</span> by summing the stage and terminal costs along the candidate trajectory.</li>
+<li>If <span class="math inline">\(\mathcal{J}(\alpha) &lt; \mathcal{J}_{\text{old}}\)</span> with sufficient decrease, <strong>accept</strong> this <span class="math inline">\(\alpha\)</span>.</li>
+<li>If not, <strong>reduce</strong> <span class="math inline">\(\alpha\)</span> (<em>e.g.</em> <span class="math inline">\(\alpha \leftarrow \beta \alpha\)</span> with <span class="math inline">\(\beta \in (0,1)\)</span>, such as <span class="math inline">\(\beta=0.5\)</span>) and try again.</li>
+</ol>
+<p>This is called a <strong>backtracking line search</strong>. Formally:</p>
+<ul>
+<li>We are minimizing the scalar function
+<span class="math display">\[
+  \phi(\alpha) := \mathcal{J}\big(u^n + \alpha\,l\big)
+\]</span>
+(with feedback and dynamics included in how we evaluate <span class="math inline">\(\mathcal{J}\)</span>).</li>
+<li>We want an <span class="math inline">\(\alpha\)</span> that gives <strong>actual decrease in cost</strong> for the <strong>true nonlinear problem</strong>, not just the local quadratic approximation.</li>
+</ul>
+<h3 id="a3-why-not-always-">A.3 Why not always <span class="math inline">\(\alpha = 1\)</span>?</h3>
+<p>Intuitively:</p>
+<ul>
+<li>The backward pass (Riccati step) gives an <strong>optimal step for the quadratic approximation</strong> of the cost and linearized dynamics.</li>
+<li>But the <strong>true problem is nonlinear</strong>; the quadratic approximation may be poor if we step too far from the nominal trajectory.</li>
+<li>A full step <span class="math inline">\(\alpha = 1\)</span> can <strong>overshoot</strong>: the new rollout might increase the cost or even destabilize the system.</li>
+</ul>
+<p>So:</p>
+<ul>
+<li>If the model is very nonlinear or the initial guess is far from optimal, <span class="math inline">\(\alpha = 1\)</span> may be too aggressive.</li>
+<li>A smaller <span class="math inline">\(\alpha\)</span> takes a <strong>shorter step</strong>, staying closer to the region where the local linear/quadratic approximation is valid.</li>
+</ul>
+<p>In optimization language:</p>
+<blockquote>
+<p>The Riccati backward pass gives you a <strong>descent direction</strong> <span class="math inline">\(l\)</span>.
+The line search on <span class="math inline">\(\alpha\)</span> ensures you get a <strong>descent step</strong> for the <em>true</em> cost.</p>
+</blockquote>
+<p>In practice, people often try a sequence like:
+<span class="math display">\[
+\alpha \in \{1,\, 0.5,\, 0.25,\, 0.1,\, 0.05,\dots\}
+\]</span>
+and pick the <strong>largest</strong> <span class="math inline">\(\alpha\)</span> that produces a sufficient cost decrease.</p>
+<h3 id="a4-why-only-scale--and-not-">A.4 Why only scale <span class="math inline">\(l_k\)</span> and not <span class="math inline">\(K_k\)</span>?</h3>
+<ul>
+<li><span class="math inline">\(K_k\)</span> is chosen to be the <strong>optimal feedback</strong> for the local LQ approximation. It stabilizes deviations around the nominal and shapes how the state trajectory responds to disturbances during the rollout.</li>
+<li><span class="math inline">\(l_k\)</span> is the <strong>feedforward step</strong> that shifts the nominal control in the direction of lower cost.</li>
+</ul>
+<p>Scaling both <span class="math inline">\(l_k\)</span> and <span class="math inline">\(K_k\)</span> would break the carefully derived LQ structure. The standard (and widely used) iLQR/SLQ practice is:</p>
+<ul>
+<li><strong>Keep <span class="math inline">\(K_k\)</span></strong> as is (full feedback),</li>
+<li><strong>Scale only <span class="math inline">\(l_k\)</span></strong> by <span class="math inline">\(\alpha\)</span>.</li>
+</ul>
+<p>So the update is:</p>
+<ul>
+<li>Incremental law from backward pass:
+<span class="math display">\[
+  \delta u_k^\star = l_k + K_k\,\delta x_k.
+\]</span></li>
+<li>Line search candidate during rollout:
+<span class="math display">\[
+  u_k^{\text{cand}}(\alpha)
+  = u_k^n + \alpha\, l_k + K_k\big(x_k^{\text{cand}}(\alpha) - x_k^n\big).
+\]</span></li>
+</ul>
+<h3 id="a5-summary">A.5 Summary</h3>
+<ul>
+<li>The <strong>feedback term</strong> <span class="math inline">\(K_k(x_k - x_k^n)\)</span> is always used during the forward rollout to stabilize and correct the trajectory. It is <strong>not</strong> scaled by <span class="math inline">\(\alpha\)</span>.</li>
+<li>The <strong>feedforward term</strong> <span class="math inline">\(l_k\)</span> is the “direction” in control space given by the local LQ solution; we scale it by a step size <span class="math inline">\(\alpha\)</span>.</li>
+<li><strong>Line search</strong> = choose <span class="math inline">\(\alpha\)</span> by trying <span class="math inline">\(\alpha=1,0.5,0.25,\dots\)</span> and picking the largest one that actually <strong>reduces the true cost</strong> <span class="math inline">\(\mathcal{J}\)</span> when the nonlinear system is rolled out.</li>
+<li>This is how SLQ/iLQR combines:
+<ul>
+<li>a <strong>local quadratic optimization</strong> step (backward pass)</li>
+<li>with a <strong>global cost check</strong> on the true nonlinear problem (line search),<br />
+ensuring stable, monotonic convergence in practice.</li>
+</ul>
+</li>
+</ul>
+</details>
+<details>
+<summary>🔽 Appendix B: Influence of terminal cost and state cost gradient</summary>
+<h3 id="b1-terminal-cost--boundary-condition--whole-policy">B.1 Terminal cost <span class="math inline">\(\rightarrow\)</span> boundary condition <span class="math inline">\(\rightarrow\)</span> whole policy</h3>
+<p>Recall the quadratic expansion of the terminal cost:
+<span class="math display">\[
+    h(x_N)
+    \approx h_N^n
+    + h_{x,N}^\top \delta x_N
+    + \tfrac12\,\delta x_N^\top H_N \delta x_N.
+\]</span></p>
+<p>This defines the <strong>terminal value function</strong>:
+<span class="math display">\[
+    V_N(\delta x_N)
+    \approx s_N + p_N^\top \delta x_N
+    + \tfrac12\,\delta x_N^\top P_N \delta x_N,
+\]</span></p>
+<p>with
+<span class="math display">\[
+    P_N := H_N, \qquad p_N := h_{x,N}.
+\]</span></p>
+<p>Now look at the <strong>last stage</strong> <span class="math inline">\(k = N-1\)</span>. The matrices there are
+<span class="math display">\[
+    \begin{aligned}
+    &amp; H_{N-1} = R_{N-1} + B_{N-1}^\top P_N B_{N-1}, \\
+    &amp; G_{N-1} = B_{N-1}^\top P_N A_{N-1}, \\
+    &amp; g_{N-1} = r_{N-1} + B_{N-1}^\top p_N.
+    \end{aligned}
+\]</span></p>
+<p>The control law at time <span class="math inline">\(N-1\)</span> is
+<span class="math display">\[
+    \delta u_{N-1}^\star
+    = l_{N-1} + K_{N-1} \delta x_{N-1},
+\]</span></p>
+<p>with
+<span class="math display">\[
+    K_{N-1} = -H_{N-1}^{-1} G_{N-1}, \qquad
+    l_{N-1} = -H_{N-1}^{-1} g_{N-1}.
+\]</span></p>
+<p>So you can see <strong>explicitly</strong>:</p>
+<ul>
+<li>
+<p><span class="math inline">\(P_N\)</span> appears in <span class="math inline">\(H_{N-1}, G_{N-1} \Rightarrow\)</span> changes <strong>feedback</strong> <span class="math inline">\(K_{N-1}\)</span>.</p>
+</li>
+<li>
+<p><span class="math inline">\(p_N\)</span> appears in <span class="math inline">\(g_{N-1} \Rightarrow\)</span> changes <strong>feedforward</strong> <span class="math inline">\(l_{N-1}\)</span>.</p>
+</li>
+</ul>
+<p>Then we update the value function at time <span class="math inline">\(N-1\)</span>:
+<span class="math display">\[
+    \tilde{Q}_{N-1} := Q_{N-1} + A_{N-1}^\top P_N A_{N-1},
+\]</span>
+<span class="math display">\[
+    \tilde{q}_{N-1} := q_{N-1} + A_{N-1}^\top p_N,
+\]</span>
+and
+<span class="math display">\[
+    \begin{aligned}
+    P_{N-1}
+    &amp;= \tilde{Q}_{N-1}
+    + K_{N-1}^\top H_{N-1} K_{N-1}
+    + K_{N-1}^\top G_{N-1}
+    + G_{N-1}^\top K_{N-1}, \\[0.3em]
+    p_{N-1}
+    &amp;= \tilde{q}_{N-1}
+    + K_{N-1}^\top H_{N-1} l_{N-1}
+    + G_{N-1}^\top l_{N-1}
+    + K_{N-1}^\top g_{N-1}.
+    \end{aligned}
+\]</span></p>
+<p>Thus:</p>
+<ul>
+<li><span class="math inline">\(P_N, p_N\)</span> determine <span class="math inline">\(H_{N-1}, G_{N-1}, g_{N-1}\)</span>,</li>
+<li>which determine <span class="math inline">\(K_{N-1}, l_{N-1}\)</span>,</li>
+<li>which determine <span class="math inline">\(P_{N-1}, p_{N-1}\)</span>,</li>
+</ul>
+<p>and then at step <span class="math inline">\(k = N-2\)</span> we use <span class="math inline">\(P_{N-1}, p_{N-1}\)</span> in exactly the same way. Repeating this backwards shows:</p>
+<blockquote>
+<p>The terminal cost sets the <em>boundary condition</em> <span class="math inline">\((P_N,p_N)\)</span> of the value function, and via the Bellman recursion it <em>influences</em> <span class="math inline">\((K_k,l_k)\)</span> at <em>every earlier</em> time step.</p>
+</blockquote>
+<p>This is precisely why in MPC, a well-chosen terminal cost (<em>e.g.</em> from infinite-horizon LQR) can dramatically change the behavior of the whole finite-horizon controller.</p>
+<h3 id="b2-how-the-state-cost-gradient--influences-the-policy">B.2 How the state cost gradient <span class="math inline">\(q_k = \ell_{x,k}\)</span> influences the policy</h3>
+<p>The term <span class="math inline">\(q_k\)</span> affects the control policy <strong>indirectly</strong> and its effect on the control law is global in time.</p>
+<p>Recall the definitions:
+<span class="math display">\[
+    q_k := \ell_{x,k}, \qquad
+    \tilde{q}_k := q_k + A_k^\top p_{k+1}.
+\]</span></p>
+<p>The backward recursion for the value-function gradient is
+<span class="math display">\[
+    p_k
+    = \tilde{q}_k
+    + K_k^\top H_k l_k
+    + G_k^\top l_k
+    + K_k^\top g_k.
+\]</span></p>
+<p>So the <strong>chain of influence</strong> from the state cost gradient is:</p>
+<ol>
+<li>The stage cost gradient w.r.t. state at time <span class="math inline">\(k\)</span> is <span class="math inline">\(q_k = \ell_{x,k}\)</span>.</li>
+<li>It enters the “effective” linear term
+<span class="math display">\[
+    \tilde{q}_k = q_k + A_k^\top p_{k+1}.
+\]</span></li>
+<li><span class="math inline">\(\tilde{q}_k\)</span> contributes directly to the value-function gradient at time <span class="math inline">\(k\)</span>:
+<span class="math display">\[
+    p_k
+    = \tilde{q}_k
+    + K_k^\top H_k l_k
+    + G_k^\top l_k
+    + K_k^\top g_k.
+\]</span></li>
+<li>At the <strong>previous time step</strong> <span class="math inline">\(k-1\)</span>, the gradient <span class="math inline">\(p_k\)</span> appears in
+<span class="math display">\[
+    g_{k-1} = r_{k-1} + B_{k-1}^\top p_k,
+\]</span>
+and then
+<span class="math display">\[
+    l_{k-1} = -H_{k-1}^{-1} g_{k-1}.
+\]</span></li>
+</ol>
+<p>So:</p>
+<ul>
+<li><span class="math inline">\(q_k\)</span> does <strong>not</strong> enter the current step’s <span class="math inline">\(g_k\)</span> <strong>directly</strong>:
+<span class="math display">\[
+    g_k = r_k + B_k^\top p_{k+1}.
+\]</span></li>
+<li>Instead, <span class="math inline">\(q_k\)</span> shapes the <strong>value function</strong> via <span class="math inline">\(p_k\)</span>, and this updated <span class="math inline">\(p_k\)</span> then affects <strong>earlier</strong> controls through <span class="math inline">\(g_{k-1}\)</span> and <span class="math inline">\(l_{k-1}\)</span>.</li>
+</ul>
+<p>Intuitively:</p>
+<ul>
+<li><span class="math inline">\(q_k\)</span> tells you <em><strong>“how much do I dislike being in this state at time <span class="math inline">\(k\)</span>”</strong></em>.</li>
+<li>That information is stored in the value-function gradient <span class="math inline">\(p_k\)</span>.</li>
+<li>Dynamic programming then propagates this information backward in time, and through the <span class="math inline">\(g_{k-1}, l_{k-1}\)</span> terms it ultimately changes the entire feedback policy <span class="math inline">\(\{K_j, l_j\}_{j=0}^{N-1}\)</span>.</li>
+</ul>
+</details>
+<details>
+<summary>🔽 Appendix C: Waypoint Cost in SLQ-MPC</summary>
+<h3 id="c1-waypoint-cost--in-slq-mpc">C.1 Waypoint Cost <span class="math inline">\(W(x_k,k)\)</span> in SLQ-MPC</h3>
+<p>In the literature<sup><a href="#icra16">1</a></sup> an intermediate (stage) waypoint cost is introduced to penalize the deviation between desired and current state, with penalties concentrated around specific <strong>time steps</strong> where each waypoint is assigned.</p>
+<p>Recall that the overall finite-horizon cost is
+<span class="math display">\[
+    \mathcal{J}
+    = (\tilde{x}_N)^\top H \tilde{x}_N
+    + \sum_{k=0}^{N-1}
+        \big[
+        \tilde{x}_k^\top Q\,\tilde{x}_k
+        + \tilde{u}_k^\top R\,\tilde{u}_k
+        + W(x_k,k)
+        \big],
+\]</span>
+where
+<span class="math display">\[
+    \tilde{x}_k = x_k - x_k^{\text{ref}}, \qquad
+    \tilde{u}_k = u_k - u_k^{\text{ref}}
+\]</span>
+are deviations from a desired state/input trajectory.</p>
+<p>The <strong>waypoint cost</strong> <span class="math inline">\(W(x_k,k)\)</span> is the discrete-time analogue of their continuous-time term:
+<span class="math display">\[
+    W(x_k,k)
+    = \sum_{n=0}^{N_{\text{wp}}-1}
+    \hat{x}_{n,k}^\top W_{p,n}\,\hat{x}_{n,k}\;
+    \sqrt{\frac{\rho_{p,n}}{2\pi}}\,
+    \exp\!\Big(
+    -\frac{\rho_{p,n}}{2}\,(k - k_{p,n})^2
+    \Big),
+\]</span>
+where</p>
+<ul>
+<li><span class="math inline">\(n = 0,\dots,N_{\text{wp}}-1\)</span>: waypoint index,</li>
+<li><span class="math inline">\(\hat{x}_{n,k}\)</span>: deviation from the <span class="math inline">\(n\)</span>-th waypoint state at time step <span class="math inline">\(k\)</span>, <em>e.g.</em><br />
+<span class="math display">\[\hat{x}_{n,k} = x_k - x_n^{\text{wp}},\]</span></li>
+<li><span class="math inline">\(W_{p,n}\)</span>: waypoint cost matrix (which state components are important at waypoint <span class="math inline">\(n\)</span>),</li>
+<li><span class="math inline">\(k_{p,n}\)</span>: desired <strong>time step</strong> at which waypoint <span class="math inline">\(n\)</span> should be reached,</li>
+<li><span class="math inline">\(\rho_{p,n}\)</span>: temporal sharpness (inverse variance of the Gaussian in the time index).</li>
+</ul>
+<blockquote>
+<p>Each waypoint contributes a <em>quadratic penalty in state</em> multiplied by a <em>Gaussian bump in time index</em> centered at <span class="math inline">\(k_{p,n}\)</span>.</p>
+</blockquote>
+<h3 id="c2-intuition">C.2 Intuition</h3>
+<ul>
+<li>The term <span class="math inline">\(\hat{x}_{n,k}^\top W_{p,n}\hat{x}_{n,k}\)</span> penalizes <strong>state error</strong> to waypoint <span class="math inline">\(n\)</span>:
+<span class="math display">\[
+  \hat{x}_{n,k} = x_k - x_n^{\text{wp}}.
+\]</span></li>
+<li>The Gaussian factor
+<span class="math display">\[
+  \sqrt{\frac{\rho_{p,n}}{2\pi}}
+  \exp\!\Big(-\tfrac{\rho_{p,n}}{2}(k - k_{p,n})^2\Big)
+\]</span>
+activates this penalty <strong>only near</strong> time step <span class="math inline">\(k_{p,n}\)</span>, fading out before and after.</li>
+</ul>
+<p>So at each time step <span class="math inline">\(k\)</span>:</p>
+<ul>
+<li>
+<p>The <strong>trajectory-tracking error</strong>
+<span class="math display">\[
+  \tilde{x}_k = x_k - x_k^{\text{ref}}
+\]</span>
+measures “How far am I from the <strong>main reference trajectory</strong> right now?” and is penalized by <span class="math inline">\(\tilde{x}_k^\top Q \tilde{x}_k\)</span> for <strong>all</strong> <span class="math inline">\(k\)</span>.</p>
+</li>
+<li>
+<p>The <strong>waypoint error</strong>
+<span class="math display">\[
+  \hat{x}_{n,k} = x_k - x_n^{\text{wp}}
+\]</span>
+measures “How far am I from <strong>waypoint <span class="math inline">\(n\)</span>’s state</strong>?”, but is weighted in time by the Gaussian, so it matters <strong>only near</strong> <span class="math inline">\(k_{p,n}\)</span>.</p>
+</li>
+</ul>
+<p>In other words:</p>
+<ul>
+<li><span class="math inline">\(\tilde{x}_k\)</span> pulls the trajectory toward the <strong>global reference</strong> over the whole horizon.</li>
+<li><span class="math inline">\(\hat{x}_{n,k}\)</span> adds extra pull toward <strong>specific waypoint states</strong> at <strong>specific times</strong>.</li>
+</ul>
+<p><strong>Tuning:</strong></p>
+<ul>
+<li>Larger <span class="math inline">\(W_{p,n}\)</span> <span class="math inline">\(\rightarrow\)</span> waypoint <span class="math inline">\(n\)</span> is more important in state space.</li>
+<li>Larger <span class="math inline">\(\rho_{p,n}\)</span> <span class="math inline">\(\rightarrow\)</span> <strong>narrower</strong> time window (more precise timing around <span class="math inline">\(k_{p,n}\)</span>).</li>
+<li>Smaller <span class="math inline">\(\rho_{p,n}\)</span> <span class="math inline">\(\rightarrow\)</span> looser requirement on when the waypoint is reached.</li>
+</ul>
+<p><strong>Potential concern (double-counting the same objective):</strong></p>
+<p>If the reference trajectory <span class="math inline">\(x_k^{\text{ref}}\)</span> already passes through the waypoints at the desired times (<em>i.e.</em> <span class="math inline">\(x_{k_{p,n}}^{\text{ref}} \approx x_n^{\text{wp}}\)</span>), then near <span class="math inline">\(k_{p,n}\)</span> the two errors
+<span class="math display">\[
+  \tilde{x}_k = x_k - x_k^{\text{ref}}, \qquad
+  \hat{x}_{n,k} = x_k - x_n^{\text{wp}}
+\]</span>
+are almost the same. In that case, the trajectory cost <span class="math inline">\(\tilde{x}_k^\top Q \tilde{x}_k\)</span> and the waypoint cost <span class="math inline">\(\hat{x}_{n,k}^\top W_{p,n}\hat{x}_{n,k}\)</span> <strong>both pull toward essentially the same target</strong>, and their weights effectively add up.</p>
+<p>If <span class="math inline">\(Q\)</span> and <span class="math inline">\(W_{p,n}\)</span> (and the temporal sharpness <span class="math inline">\(\rho_{p,n}\)</span>) are chosen too large simultaneously, the combined tracking + waypoint penalties can become <strong>dominant</strong> over other important terms (<em>e.g.</em> input regularization, obstacle costs, soft constraints). In practice, this means you must <strong>carefully tune</strong>:</p>
+<ul>
+<li>the magnitude of <span class="math inline">\(Q\)</span> vs. <span class="math inline">\(W_{p,n}\)</span>, and</li>
+<li>how sharply in time the waypoint penalty is activated via <span class="math inline">\(\rho_{p,n}\)</span>,</li>
+</ul>
+<p>to avoid over-emphasizing waypoints relative to the rest of the cost and to reflect the true task priorities.</p>
+<h3 id="c3-why-this-form-is-useful">C.3 Why this form is useful</h3>
+<ol>
+<li>
+<p><strong>Soft waypoint constraints</strong></p>
+<p>Instead of hard constraints <span class="math inline">\(x_{k_{p,n}} = x_n^{\text{wp}}\)</span>, they use a cost term.<br />
+This lets the optimizer:</p>
+<ul>
+<li>strongly <strong>encourage</strong> passing near the waypoint,</li>
+<li>but still <strong>violate</strong> it slightly if dynamics or input limits require it.</li>
+</ul>
+</li>
+<li>
+<p><strong>Quadratic in state <span class="math inline">\(\rightarrow\)</span> SLQ-friendly</strong></p>
+<p>For each fixed <span class="math inline">\(k\)</span>, <span class="math inline">\(W(x_k,k)\)</span> is quadratic in <span class="math inline">\(\hat{x}_{n,k}\)</span>.<br />
+The time-dependent Gaussian is just a scalar weight, so the cost remains:</p>
+<ul>
+<li>quadratic in state,</li>
+<li>smooth in the time index.<br />
+This fits perfectly into SLQ’s linear–quadratic approximation framework.</li>
+</ul>
+</li>
+<li>
+<p><strong>Unifies trajectory tracking and waypoint shaping</strong></p>
+<ul>
+<li>The usual <span class="math inline">\(Q,R,H\)</span> terms handle final/trajectory tracking via <span class="math inline">\(\tilde{x}_k,\tilde{u}_k\)</span>.</li>
+<li><span class="math inline">\(W(x_k,k)\)</span> adds <strong>intermediate landmarks</strong> (gates, windows, obstacle clearances, etc.).<br />
+Both are handled uniformly as running/terminal quadratic costs.</li>
+</ul>
+</li>
+<li>
+<p><strong>Flexible tuning</strong></p>
+<p>Different waypoints can have different <span class="math inline">\(W_{p,n}\)</span> and <span class="math inline">\(\rho_{p,n}\)</span>, allowing:</p>
+<ul>
+<li>emphasis on certain state components at specific waypoints,</li>
+<li>precise timing for some waypoints and relaxed timing for others.</li>
+</ul>
+</li>
+</ol>
+<blockquote>
+<p>The waypoint cost <span class="math inline">\(W(x_k,k)\)</span> is a <em>time-localized quadratic penalty</em> that softly pulls the trajectory toward specified intermediate states at specified time steps, while preserving the quadratic structure needed by SLQ. It enforces waypoints “as soft constraints” without making the problem hard or infeasible.</p>
+</blockquote>
+</details>
+
+{% endraw %}

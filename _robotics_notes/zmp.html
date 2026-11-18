@@ -1,0 +1,201 @@
+---
+title: "Zero Moment Point (ZMP) in Legged Robotics"
+collection: "robotics_notes"
+permalink: "/robotics-notes/zmp/"
+excerpt: "The **Zero Moment Point (ZMP)** is a key concept in legged robotics, especially for humanoid robots, to ensure stable gait and balancing."
+categories_path: "Dynamics"
+order: 4
+source: "https://github.com/wei-hsuan-cheng/robotics_notes/blob/main/dynamics/zmp/zmp.md"
+---
+
+{% raw %}
+<p class="notice--info">Rendered from <a href="https://github.com/wei-hsuan-cheng/robotics_notes/blob/main/dynamics/zmp/zmp.md"><i class="fab fa-github" aria-hidden="true"></i> robotics_notes/dynamics/zmp/zmp.md</a>.</p>
+
+<p><strong>Contents</strong></p>
+<ul>
+<li><a href="#1-intuition-behind-zmp">1. <strong>Intuition Behind ZMP</strong></a></li>
+<li><a href="#2-mathematical-derivation-of-zmp">2. <strong>Mathematical Derivation of ZMP</strong></a></li>
+<li><a href="#3-usage-of-zmp-in-robotics">3. <strong>Usage of ZMP in Robotics</strong></a></li>
+<li><a href="#4-centroidal-dynamics-vs-lumped-mass-model">4. <strong>Centroidal Dynamics vs Lumped-Mass Model</strong></a></li>
+<li><a href="#5-lipm-simplified-form-for-zmp">5. <strong>LIPM Simplified Form for ZMP</strong></a></li>
+<li><a href="#6-pros-caveats-and-limitations-of-zmp">6. <strong>Pros, Caveats, and Limitations of ZMP</strong></a></li>
+<li><a href="#7-summary">7. <strong>Summary</strong></a></li>
+</ul>
+<hr />
+
+<p>The <strong>Zero Moment Point (ZMP)</strong> is a key concept in legged robotics, especially for humanoid robots, to ensure stable gait and balancing. It refers to the point on the ground where the <strong>net moment</strong> from the robot’s forces (gravity, ground reaction, etc.) has no horizontal component. For a robot to remain stable, its <strong>ZMP</strong> must stay within the <strong>support polygon</strong>, which is the area defined by the contact points of its feet with the ground.</p>
+<p>This explanation provides an intuitive understanding of ZMP, its mathematical derivation, usages, limitations, and a comparison between the simple <strong>lumped-mass model</strong> and the more complex <strong>centroidal dynamics</strong> used in advanced robotics. Additionally, the simplified form of the <strong>Linear Inverted Pendulum Model (LIPM)</strong> is included.</p>
+<hr />
+<h2 id="1-intuition-behind-zmp">1. <strong>Intuition Behind ZMP</strong></h2>
+<p>The <strong>Zero Moment Point (ZMP)</strong> is the point on the ground where the resultant contact forces and moments produced by the robot do <strong>not generate a tipping moment</strong>. It is crucial to ensure that the robot remains stable and does not tip over.</p>
+<h3 id="key-insights">Key Insights:</h3>
+<ul>
+<li><strong>ZMP Definition</strong>: The point on the ground where the total moment acting on the robot (due to external forces like gravity and ground reaction forces) equals zero in the horizontal plane (x and y directions).</li>
+<li>For a robot to be stable, the ZMP must remain <strong>inside</strong> the <strong>support polygon</strong>. If the ZMP moves outside this area, the robot will fall.</li>
+</ul>
+<hr />
+<h2 id="2-mathematical-derivation-of-zmp">2. <strong>Mathematical Derivation of ZMP</strong></h2>
+<p>The ZMP can be derived using the Newton-Euler equations for the robot's motion. Here, we’ll consider the robot as a collection of point masses <span class="math inline">\(m_i\)</span> located at different positions <span class="math inline">\(r_i = (x_i, y_i, z_i)\)</span>.</p>
+<h3 id="21-newton-euler-equations">2.1 <strong>Newton-Euler Equations</strong></h3>
+<p>For each mass element <span class="math inline">\(i\)</span> of the robot, the Newton-Euler equation is:</p>
+<div class="math display">\[
+m_i \ddot{r}_i = f_i^{\text{ext}} + m_i \vec{g}
+\]</div>
+<p>Where:</p>
+<ul>
+<li><span class="math inline">\(m_i\)</span>: mass of the <span class="math inline">\(i\)</span>-th link</li>
+<li><span class="math inline">\(\ddot{r}_i = (\ddot{x}_i, \ddot{y}_i, \ddot{z}_i)\)</span>: acceleration of the <span class="math inline">\(i\)</span>-th link</li>
+<li><span class="math inline">\(f_i^{\text{ext}}\)</span>: external forces acting on the <span class="math inline">\(i\)</span>-th link (including ground reaction forces)</li>
+<li><span class="math inline">\(\vec{g} = (0, 0, -g)\)</span>: gravitational acceleration vector</li>
+</ul>
+<p>Summing over all the masses:</p>
+<div class="math display">\[
+F_x = \sum_i m_i \ddot{x}_i,\quad
+F_y = \sum_i m_i \ddot{y}_i,\quad
+F_z = \sum_i m_i (\ddot{z}_i + g)
+\]</div>
+<p>Where:</p>
+<ul>
+<li><span class="math inline">\(F_x, F_y, F_z\)</span>: total external forces along the x, y, and z axes</li>
+</ul>
+<hr />
+<h3 id="22-moment-calculation">2.2 <strong>Moment Calculation</strong></h3>
+<p>Next, we calculate the moment of the external forces about the origin on the ground plane <span class="math inline">\(z=0\)</span>. The external moment is:</p>
+<div class="math display">\[
+M_O = \sum_i r_i \times m_i(\ddot{r}_i - g_{vec})
+\]</div>
+<p>Where the cross product is computed as:</p>
+<div class="math display">\[
+r_i = (x_i, y_i, z_i),\quad m_i(\ddot{r}_i - g) = (m_i \ddot{x}_i, m_i \ddot{y}_i, m_i (\ddot{z}_i + g))
+\]</div>
+<p>This gives the moments:</p>
+<div class="math display">\[
+M_x = \sum_i \left[ y_i m_i (\ddot{z}_i + g) - z_i m_i \ddot{y}_i \right]
+\]</div>
+<div class="math display">\[
+M_y = \sum_i \left[ z_i m_i \ddot{x}_i - x_i m_i (\ddot{z}_i + g) \right]
+\]</div>
+<div class="math display">\[
+M_z = \sum_i \left[ x_i m_i \ddot{y}_i - y_i m_i \ddot{x}_i \right]
+\]</div>
+<hr />
+<h3 id="23-zmp-definition">2.3 <strong>ZMP Definition</strong></h3>
+<p>The ZMP is the point where the moment due to the ground reaction force is zero. It is given by:</p>
+<div class="math display">\[
+M_O = p_Z \times F + M_Z
+\]</div>
+<p>Where:</p>
+<ul>
+<li><span class="math inline">\(p_Z = (x_Z, y_Z, 0)\)</span> is the ZMP</li>
+<li><span class="math inline">\(F = (F_x, F_y, F_z)\)</span> is the resultant force at the ZMP</li>
+<li><span class="math inline">\(M_Z\)</span> is any residual moment at the ZMP (which is zero in the horizontal plane)</li>
+</ul>
+<p>Therefore, for the horizontal moments:</p>
+<div class="math display">\[
+M_x = y_Z F_z,\quad M_y = -x_Z F_z
+\]</div>
+<p>Thus, the ZMP coordinates are:</p>
+<div class="math display">\[
+x_Z = -\frac{M_y}{F_z},\quad y_Z = \frac{M_x}{F_z}
+\]</div>
+<hr />
+<h3 id="24-final-closed-form-equation">2.4 <strong>Final Closed-Form Equation</strong></h3>
+<p>By substituting the expressions for <span class="math inline">\(M_x\)</span> and <span class="math inline">\(M_y\)</span>, we get the closed-form expressions for the ZMP coordinates:</p>
+<div class="math display">\[
+x_{zmp} = \frac{\sum_i m_i (\ddot{z}_i + g) x_i - \sum_i m_i \ddot{x}_i z_i}{\sum_i m_i (\ddot{z}_i + g)}
+\]</div>
+<div class="math display">\[
+y_{zmp} = \frac{\sum_i m_i (\ddot{z}_i + g) y_i - \sum_i m_i \ddot{y}_i z_i}{\sum_i m_i (\ddot{z}_i + g)}
+\]</div>
+<p>These equations represent the ZMP location in terms of the robot's mass distribution, accelerations, and gravitational forces.</p>
+<hr />
+<h2 id="3-usage-of-zmp-in-robotics">3. <strong>Usage of ZMP in Robotics</strong></h2>
+<h3 id="31-applications-in-gait-and-balancing">3.1 <strong>Applications in Gait and Balancing</strong></h3>
+<p>ZMP is a fundamental concept used in <strong>gait planning</strong> and <strong>balancing</strong> in legged robots. It is typically used in the following:</p>
+<ol>
+<li>
+<p><strong>Walking Gait Planning</strong>: The ZMP trajectory is planned such that it stays inside the support polygon during double and single support phases of walking.</p>
+</li>
+<li>
+<p><strong>Balancing</strong>: During standing, ZMP must remain inside the support polygon. If the ZMP shifts outside, corrective actions (such as shifting the body or taking a step) are required to maintain stability.</p>
+</li>
+<li>
+<p><strong>Push Recovery</strong>: In case the robot is pushed, the ZMP is monitored to decide if corrective action (like stepping) is required to prevent a fall.</p>
+</li>
+</ol>
+<h3 id="32-controllers-and-algorithms">3.2 <strong>Controllers and Algorithms</strong></h3>
+<ul>
+<li><strong>Preview Control</strong>: ZMP is used in preview control (e.g., Kajita's method) to predict and adjust the robot's motion.</li>
+<li><strong>Model Predictive Control (MPC)</strong>: ZMP is incorporated as a constraint in walking controllers like <strong>OCS2 MPC</strong> to generate stable walking gaits.</li>
+</ul>
+<hr />
+<h2 id="4-centroidal-dynamics-vs-lumped-mass-model">4. <strong>Centroidal Dynamics vs Lumped-Mass Model</strong></h2>
+<p>While the <strong>lumped-mass model</strong> provides a simple approximation of ZMP by treating the robot’s center of mass (COM) as a single point mass, <strong>centroidal dynamics</strong> introduces a more complex model that accounts for rotational inertia and angular momentum effects. This results in a more accurate and general formulation of ZMP, especially useful for dynamic motions.</p>
+<h3 id="41-lumped-mass-model-simplified">4.1 <strong>Lumped-Mass Model</strong> (Simplified)</h3>
+<p>In the <strong>lumped-mass model</strong>, the robot is treated as a point mass located at the <strong>COM</strong>, and the ZMP is determined based on the horizontal acceleration and position of the COM:</p>
+<div class="math display">\[
+x_Z = x_C - \frac{z_C}{g} \ddot{x}_C,\quad y_Z = y_C - \frac{z_C}{g} \ddot{y}_C
+\]</div>
+<p>Where:</p>
+<ul>
+<li><span class="math inline">\(x_C, y_C\)</span>: COM position</li>
+<li><span class="math inline">\(z_C\)</span>: COM height</li>
+<li><span class="math inline">\(\ddot{x}_C, \ddot{y}_C\)</span>: accelerations of COM in x and y directions</li>
+<li><span class="math inline">\(g\)</span>: gravitational acceleration</li>
+</ul>
+<p>This approach simplifies the robot’s dynamics, treating it as a single point mass and ignoring its rotational inertia and angular momentum.</p>
+<h3 id="42-centroidal-dynamics-more-complex">4.2 <strong>Centroidal Dynamics (More Complex)</strong></h3>
+<p>In contrast, <strong>centroidal dynamics</strong> involves modeling the robot’s <strong>entire mass distribution</strong>, including <strong>rotational inertia</strong> and <strong>angular momentum</strong>. In this framework, the ZMP is determined not only by the COM motion but also by the <strong>distribution of mass</strong> and the <strong>robot’s rotational behavior</strong>. The effect of <strong>angular momentum</strong> and <strong>torques</strong> about the COM must be accounted for, making the ZMP formulation more complex and robust for dynamic motions.</p>
+<p>For instance, in centroidal dynamics, the ZMP calculation includes contributions from the robot's <strong>momentum</strong> and <strong>rotational inertia</strong>, which modify the horizontal forces and moments. The more advanced centroidal control techniques take these into account, making the robot more stable during fast, dynamic movements like running, jumping, or quickly shifting its body.</p>
+<h3 id="43-zmp-in-centroidal-dynamics">4.3 <strong>ZMP in Centroidal Dynamics</strong></h3>
+<p>In centroidal dynamics, the ZMP is derived from the <strong>centroidal angular momentum</strong> and <strong>contact forces</strong>, yielding a more accurate representation of the robot's overall motion and stability. The ZMP equation incorporates not only the forces from COM motion but also contributions from the robot’s <strong>joint torques</strong> and <strong>angular momentum</strong>.</p>
+<p>This results in a more <strong>generalized</strong> ZMP formula that includes:</p>
+<ul>
+<li><strong>Angular momentum</strong>: The robot’s rotational inertia and the effect of torque on its stability.</li>
+<li><strong>Mass distribution</strong>: The full distribution of mass across the robot’s body, not just the COM.</li>
+</ul>
+<p>The resulting ZMP form is more <strong>complex</strong> than the lumped-mass case, but is necessary for higher-performance robots operating in dynamic environments.</p>
+<hr />
+<h2 id="5-lipm-simplified-form-for-zmp">5. <strong>LIPM Simplified Form for ZMP</strong></h2>
+<p>The <strong>Linear Inverted Pendulum Model (LIPM)</strong> is widely used in humanoid robotics for stable walking. It simplifies the ZMP calculation by approximating the robot's motion as a point mass above a point of support. The simplified ZMP formula for a <strong>single point mass</strong> moving in the <span class="math inline">\(x\)</span> and <span class="math inline">\(y\)</span> directions is given by:</p>
+<div class="math display">\[
+x_{zmp} = x_{com} - \frac{z_{com}}{g} \ddot{x}_{com}, \quad y_{zmp} = y_{com} - \frac{z_{com}}{g} \ddot{y}_{com}
+\]</div>
+<p>Where:</p>
+<ul>
+<li><span class="math inline">\(x_{com}, y_{com}\)</span>: position of the center of mass (COM)</li>
+<li><span class="math inline">\(z_{com}\)</span>: height of the COM</li>
+<li><span class="math inline">\(\ddot{x}_{com}, \ddot{y}_{com}\)</span>: accelerations of the COM in the <span class="math inline">\(x\)</span> and <span class="math inline">\(y\)</span> directions</li>
+<li><span class="math inline">\(g\)</span>: gravitational acceleration</li>
+</ul>
+<p>This form of ZMP is valid for <strong>quasi-static motions</strong> (slow walking or standing) and is widely used for <strong>gait planning</strong> in humanoid robots.</p>
+<hr />
+<h2 id="6-pros-caveats-and-limitations-of-zmp">6. <strong>Pros, Caveats, and Limitations of ZMP</strong></h2>
+<h3 id="61-pros">6.1 <strong>Pros</strong></h3>
+<ul>
+<li><strong>Simple Concept</strong>: ZMP is easy to understand and provides a clear criterion for stability.</li>
+<li><strong>Useful for Slow, Quasi-Static Motion</strong>: It works well for stable, slow walking or standing robots.</li>
+<li><strong>Wide Adoption</strong>: ZMP has been used in many humanoid robots like ASIMO and HRP series.</li>
+</ul>
+<h3 id="62-caveats">6.2 <strong>Caveats</strong></h3>
+<ul>
+<li><strong>Does Not Handle Dynamic Motion Well</strong>: ZMP is less effective for dynamic gaits (e.g., running, jumping) where the robot's motion involves significant inertia and angular momentum.</li>
+<li><strong>Assumes a Flat Ground</strong>: ZMP calculations assume a flat ground surface, making it less suitable for rough terrain or non-level surfaces.</li>
+</ul>
+<h3 id="63-limitations">6.3 <strong>Limitations</strong></h3>
+<ul>
+<li><strong>Angular Momentum</strong>: ZMP does not account for angular momentum well, especially in highly dynamic movements.</li>
+<li><strong>Reduced Accuracy for Large Robots</strong>: For larger robots, the mass distribution and joint dynamics can complicate ZMP control, requiring more sophisticated models.</li>
+<li><strong>No Tipping Consideration</strong>: ZMP only considers the horizontal moment, not the tipping dynamics, making it less reliable when large disturbances occur.</li>
+</ul>
+<hr />
+<h2 id="7-summary">7. <strong>Summary</strong></h2>
+<p>The <strong>Zero Moment Point (ZMP)</strong> is a critical concept in legged robotics that ensures stable walking and balancing. It defines a point on the ground where the net moment from all external forces equals zero. ZMP is primarily used for:</p>
+<ol>
+<li><strong>Balancing</strong>: Ensuring the ZMP stays within the support polygon.</li>
+<li><strong>Gait Planning</strong>: Generating stable walking patterns by maintaining the ZMP trajectory within support areas.</li>
+<li><strong>Push Recovery</strong>: Detecting when corrective actions (like stepping) are needed to prevent tipping.</li>
+</ol>
+<p>While ZMP is highly useful for quasi-static motion, it has limitations in dynamic environments, where more advanced methods (like <strong>Centroidal Dynamics</strong> and <strong>Capture Point</strong>) are used. Understanding ZMP and its limitations is crucial for designing stable legged robots, especially for applications involving walking and balancing.</p>
+
+{% endraw %}

@@ -1,0 +1,200 @@
+---
+title: "Manipulability-Based Singularity Avoidance and Its Gradient"
+collection: "robotics_notes"
+permalink: "/robotics-notes/singularity-and-manipulability/"
+excerpt: "This note explains why Yoshikawa’s **manipulability measure** is a useful way to formulate **singularity avoidance problems**, and then summarizes a compact derivation of its **gradient**."
+categories_path: "Kinematics"
+order: 5
+source: "https://github.com/wei-hsuan-cheng/robotics_notes/blob/main/kinematics/singularity_and_manipulability.md"
+---
+
+{% raw %}
+<p class="notice--info">Rendered from <a href="https://github.com/wei-hsuan-cheng/robotics_notes/blob/main/kinematics/singularity_and_manipulability.md"><i class="fab fa-github" aria-hidden="true"></i> robotics_notes/kinematics/singularity_and_manipulability.md</a>.</p>
+
+<p><strong>Contents</strong></p>
+<ul>
+<li><a href="#why-manipulability-is-a-good-singularity-metric">Why manipulability is a good singularity metric</a></li>
+<li><a href="#notation">Notation</a></li>
+<li><a href="#general-gradient-of-yoshikawas">General gradient of Yoshikawa’s <span class="math inline">\(w\)</span></a></li>
+<li><a href="#poe-body-jacobian-and-its-derivatives">PoE body Jacobian and its derivatives</a></li>
+<li><a href="#assembling-the-manipulability-gradient">Assembling the manipulability gradient</a></li>
+<li><a href="#practical-notes">Practical notes</a></li>
+<li><a href="#references">References</a></li>
+</ul>
+<hr />
+
+<p>This note explains why Yoshikawa’s <strong>manipulability measure</strong> <a href="#ty85">[1]</a> is a useful way to formulate <strong>singularity avoidance problems</strong>, and then summarizes a compact derivation of its <em><strong>gradient</strong></em>. The manipulability measure, also called the manipulability index, indicates the <strong>ease</strong> with which the robot can move in different directions <a href="#mr17">[2]</a>.</p>
+<p>The key point is that singularity is fundamentally a <strong>Jacobian rank-loss</strong> problem. Since the Jacobian depends on the robot configuration, a singularity metric can be written as a scalar function of the configuration. In this text the Jacobian is built via the Product of Exponentials (PoE) in the body/end-effector frame. It matches standard Lie-group identities and is equivalent to product-rule derivations written directly with exponentials.</p>
+<h2 id="why-manipulability-is-a-good-singularity-metric">Why manipulability is a good singularity metric</h2>
+<p>Let a task Jacobian be
+<span class="math display">\[
+J_{\text{task}}(q) \in \mathbb{R}^{m \times n}, \qquad m \le n,
+\]</span>
+where <span class="math inline">\(m\)</span> is the selected task dimension and <span class="math inline">\(n\)</span> is the number of actuated joints used for that task.</p>
+<p>A <strong>kinematic singularity</strong> occurs when <span class="math inline">\(J_{\text{task}}\)</span> loses row rank. At such a configuration, at least one task space direction becomes difficult or impossible to realize movement with finite joint motion. Equivalently:</p>
+<ul>
+<li>at least one singular value <span class="math inline">\(\sigma_i(J_{\text{task}})\)</span> collapses toward zero,</li>
+<li>the task velocity ellipsoid shrinks along one or more principal axes,</li>
+<li>the inverse kinematics / resolved-rate mapping becomes ill-conditioned.</li>
+</ul>
+<p>This is exactly why manipulability is convenient:
+<span class="math display">\[
+w(q) = \sqrt{\det\!\big(J_{\text{task}} J_{\text{task}}^T\big)}
+     = \prod_{i=1}^{m} \sigma_i(J_{\text{task}}).
+\]</span></p>
+<p>So:</p>
+<ul>
+<li><span class="math inline">\(w(q) &gt; 0\)</span> when the selected task Jacobian has full row rank,</li>
+<li><span class="math inline">\(w(q) = 0\)</span> exactly at a singular configuration for that selected task,</li>
+<li>small <span class="math inline">\(w(q)\)</span> means the robot is close to a singular or poorly conditioned configuration.</li>
+</ul>
+<p>This turns the singularity avoidance problem into a scalar inequality problem: instead of reasoning directly about rank deficiency, we can keep the robot away from singularity by enforcing a lower bound on <span class="math inline">\(w\)</span>.</p>
+<h2 id="notation">Notation</h2>
+<ul>
+<li>Joint vector: <span class="math inline">\(\theta = [\theta_1\;\ldots\;\theta_n]^T\)</span>.</li>
+<li>Body/end–effector Jacobian: <span class="math inline">\(J(\theta) = [J_1\;\cdots\;J_n] \in\mathbb{R}^{6\times n}\)</span> with columns <span class="math inline">\(J_i \in \mathbb{R}^6\)</span>.</li>
+<li>Yoshikawa manipulability <a href="#ty85">[1]</a>: <span class="math inline">\(\displaystyle w(\theta) = \sqrt{\det\big(J J^T\big)}\)</span>.</li>
+<li>Manipulability gradient: <span class="math inline">\(J_w(\theta) := \partial w(\theta) / \partial \theta \in\mathbb{R}^{1\times n}\)</span>.</li>
+<li>Hat/vee maps: <span class="math inline">\(\hat{S} = S^{\wedge} \in \mathfrak{se}(3)\)</span> for <span class="math inline">\(S = (S^{\wedge})^{\vee}\in\mathbb{R}^6\)</span>, where we use screw order <span class="math inline">\(S=[v^T\,\omega^T]^T\)</span>.</li>
+<li>The commutator (or Lie bracket) <a href="#js05">[1]</a>: <span class="math inline">\([A,B]=AB-BA\)</span>.</li>
+<li>The adjoint representations <a href="#mr17">[2]</a><a href="#js05">[3]</a><a href="#rm94">[4]</a> for Lie group <span class="math inline">\(\mathrm{Ad}(\cdot)\)</span> and Lie algebra <span class="math inline">\(\mathrm{ad}(\cdot)\)</span>: <span class="math inline">\(\mathrm{Ad}_T \in \mathbb{R}^{6\times6},\; \mathrm{ad}_S \in \mathbb{R}^{6\times6}\)</span> with our <span class="math inline">\(S = [v^T\,\omega^T]^T\)</span> ordering
+<span class="math display">\[
+\mathrm{ad}_{S} = \begin{bmatrix} [\omega]_\times &amp; [v]_\times \\
+                                      0               &amp; [\omega]_\times \end{bmatrix},\text{ s.t. }
+(S \times \eta)^{\wedge} := (\mathrm{ad}_{S} \eta)^{\wedge} = [\hat{S},\hat{\eta}]
+\]</span>
+where &quot;<span class="math inline">\(\times\)</span>&quot; is the <em>twist</em> cross product, an extension of cross product from <span class="math inline">\(\mathbb{R}^3\)</span> to <span class="math inline">\(\mathbb{R}^6\)</span> <a href="#rm94">[4]</a>.</li>
+</ul>
+<h2 id="general-gradient-of-yoshikawas">General gradient of Yoshikawa’s <span class="math inline">\(w\)</span></h2>
+<p>Manipulability quantifies <strong>proximity</strong> to singularity, but its <strong>gradient</strong> is what makes it <strong>actionable</strong>: it provides the local joint-space direction of increasing manipulability, so the avoidance policy can guide the robot away from singular configurations rather than merely detect them.</p>
+<p>The goal is then to solve for the manipulability gradient</p>
+<div class="math display">\[
+\boxed{\;J_w(\theta) := \frac{\partial w(\theta)}{\partial \theta}\in\mathbb{R}^{1\times n},\text{ s.t. } \dot{w} = J_w(\theta)\;\dot{\theta}\in\mathbb{R}.\;}
+\]</div>
+<p>Let <span class="math inline">\(A(\theta) = J J^T \in \mathbb{R}^{6\times6}\)</span>. Then</p>
+<div class="math display">\[
+\frac{\partial w}{\partial \theta_j}
+  = \frac{w}{2}\;\mathrm{tr}\!\left(A^{-1} \frac{\partial A}{\partial \theta_j}\right),
+\qquad
+\frac{\partial A}{\partial \theta_j} = \frac{\partial J}{\partial \theta_j} J^T + J \left(\frac{\partial J}{\partial \theta_j}\right)^T.
+\]</div>
+<p>Using symmetry of <span class="math inline">\(A^{-1}\)</span> and cyclic trace, this simplifies to the numerically convenient form <a href="#gm02">[5]</a></p>
+<div class="math display">\[
+\boxed{\;\frac{\partial w}{\partial \theta_j} = w\,\mathrm{Tr}\!\left(\frac{\partial J}{\partial \theta_j}\,J^{\dagger}\right)\in\mathbb{R}.\;}
+\]</div>
+<p>Here <span class="math inline">\(J^{\dagger}\)</span> denotes the Moore–Penrose pseudoinverse (for full row rank, <span class="math inline">\(J^{\dagger}=J^T (J J^T)^{-1}\)</span>; near singularities use a damped form).</p>
+<h2 id="poe-body-jacobian-and-its-derivatives">PoE body Jacobian and its derivatives</h2>
+<p>For PoE in the body frame, the <span class="math inline">\(i\)</span>‑th column of <span class="math inline">\(J(\theta)\)</span> is <a href="#mr17">[2]</a></p>
+<div class="math display">\[
+J_i(\theta) = \mathrm{Ad}_{\,e^{-\hat{S}_n\theta_n}\cdots e^{-\hat{S}_{i+1}\theta_{i+1}}} \, S_i.
+\]</div>
+<p>First define <span class="math inline">\(M_i := e^{-\hat{S}_n\theta_n}\cdots e^{-\hat{S}_{i+1}\theta_{i+1}}\)</span>, so that <span class="math inline">\(J_i = \mathrm{Ad}_{M_i} S_i \Leftrightarrow \hat{J}_i = M_i\,\hat{S}_i\,M_i^{-1}\)</span>.</p>
+<ul>
+<li>
+<p>Differentiating <span class="math inline">\(\hat{J}_i(\theta)\)</span> w.r.t. <span class="math inline">\(\theta_j\)</span> yields two regimes:</p>
+<ol>
+<li>
+<p>If <span class="math inline">\(j \le i\)</span>, <span class="math inline">\(\, e^{-\hat{S}_j\theta_j}\)</span> is not in <span class="math inline">\(M_i\)</span>, so <span class="math inline">\(\partial J_i/\partial\theta_j = 0\)</span>.</p>
+</li>
+<li>
+<p>If <span class="math inline">\(j&gt;i\)</span>,
+<span class="math display">\[
+\frac{\partial \hat{J}_i}{\partial \theta_j}
+= \underbrace{\left(\frac{\partial M_i}{\partial\theta_j}\right) \hat{S}_i M_i^{-1} + M_i\hat{S}_i\left(\frac{\partial M_i^{-1}}{\partial\theta_j}\right)}_{\text{product rule}}
+= \big[(\partial M_i/\partial\theta_j)M_i^{-1},\; \hat{J}_i\big].
+\]</span></p>
+</li>
+</ol>
+<details>
+<summary>Derivation: product‑rule terms become a commutator</summary>
+<p>For any differentiable, invertible matrix <span class="math inline">\(M(\theta)\)</span> and constant matrix <span class="math inline">\(X\)</span>,
+<span class="math display">\[
+\frac{\partial}{\partial\theta}\big(M X M^{-1}\big)
+= (\partial M) X M^{-1} + M X (\partial M^{-1}).
+\]</span>
+Use the inverse derivative identity, obtained from <span class="math inline">\(I = M M^{-1}\)</span>:
+<span class="math display">\[
+0 = (\partial M)M^{-1} + M(\partial M^{-1})\;\;\Rightarrow\;\; \partial M^{-1} = -\,M^{-1}(\partial M)M^{-1}.
+\]</span>
+Substitute and define <span class="math inline">\(Q := (\partial M)M^{-1}\)</span>:
+<span class="math display">\[
+\begin{aligned}
+\frac{\partial}{\partial\theta}\big(M X M^{-1}\big)
+&amp;= (\partial M) X M^{-1} - M X M^{-1} (\partial M) M^{-1}\\
+&amp;= Q\,(M X M^{-1}) - (M X M^{-1})\,Q\\
+&amp;= \big[\,Q,\; M X M^{-1}\,\big].
+\end{aligned}
+\]</span>
+Applying this with <span class="math inline">\(M=M_i\)</span>, <span class="math inline">\(X=\hat{S}_i\)</span> and <span class="math inline">\(M X M^{-1} = \hat{J}_i\)</span> gives
+<span class="math display">\[
+\frac{\partial \hat{J}_i}{\partial \theta_j} = \big[\,(\partial M_i/\partial\theta_j) M_i^{-1},\; \hat{J}_i\,\big].
+\]</span></p>
+</details>
+</li>
+<li>
+<p>Now factor <span class="math inline">\(M_i = F\,e^{-\hat{S}_j\theta_j}G\)</span> with <span class="math inline">\(F=e^{-\hat{S}_n\theta_n}\cdots e^{-\hat{S}_{j+1}\theta_{j+1}}\)</span> and <span class="math inline">\(G=e^{-\hat{S}_{j-1}\theta_{j-1}}\cdots e^{-\hat{S}_{i+1}\theta_{i+1}}\)</span>. Then
+<span class="math display">\[
+(\partial M_i/\partial\theta_j)M_i^{-1} = F(-\hat{S}_j)F^{-1} = -\,(\mathrm{Ad}_F S_j)^{\wedge} = -\,\hat{J}_j.
+\]</span></p>
+<details>
+<summary>Details</summary>
+<ol>
+<li>Only the <span class="math inline">\(j\)</span>‑th exponential depends on <span class="math inline">\(\theta_j\)</span>, so with <span class="math inline">\(E_j:=e^{-\hat{S}_j\theta_j}\)</span> and constants (w.r.t. <span class="math inline">\(\theta_j\)</span>) <span class="math inline">\(F, G\)</span>,
+<span class="math display">\[M_i = F\,E_j\,G,\qquad \frac{\partial M_i}{\partial\theta_j} = F\,\frac{\partial E_j}{\partial\theta_j}\,G.\]</span></li>
+<li>For a constant matrix <span class="math inline">\(A\)</span>, <span class="math inline">\(\frac{\partial}{\partial\theta}e^{A\theta}=A e^{A\theta}\)</span>. Hence <span class="math inline">\(\frac{\partial E_j}{\partial\theta_j}=(-\hat{S}_j)E_j\)</span> and
+<span class="math display">\[\frac{\partial M_i}{\partial\theta_j} = F\,(-\hat{S}_j)\,E_j\,G.\]</span></li>
+<li>Right‑multiply by <span class="math inline">\(M_i^{-1}=G^{-1}E_j^{-1}F^{-1}\)</span> and cancel:
+<span class="math display">\[\begin{aligned}
+(\partial M_i/\partial\theta_j)M_i^{-1}
+&amp;= F(-\hat{S}_j)E_j\,G\;G^{-1}E_j^{-1}F^{-1}\\
+&amp;= F(-\hat{S}_j)\,\underbrace{E_jE_j^{-1}}_{I}\,F^{-1} = F(-\hat{S}_j)F^{-1}.
+\end{aligned}\]</span></li>
+<li>Use the adjoint identity <span class="math inline">\((\mathrm{Ad}_T S)^{\wedge}=T\hat{S}T^{-1}\)</span>. With <span class="math inline">\(T=F\)</span>,
+<span class="math display">\[F(-\hat{S}_j)F^{-1}=-(\mathrm{Ad}_F S_j)^{\wedge}.\]</span></li>
+<li>For the body Jacobian, <span class="math inline">\(J_j(\theta)=\mathrm{Ad}_F S_j\)</span>, so <span class="math inline">\((\mathrm{Ad}_F S_j)^{\wedge}=\hat{J}_j\)</span> and the chain closes.</li>
+</ol>
+</details>
+</li>
+</ul>
+<p>Therefore,
+<span class="math display">\[
+\boxed{\;\frac{\partial \hat{J}_i}{\partial \theta_j} = -\,[\hat{J}_j,\hat{J}_i] \;\;\Leftrightarrow\;\; \frac{\partial J_i}{\partial \theta_j} = -\,\mathrm{ad}_{J_j}\,J_i\quad \forall j&gt;i;\qquad \frac{\partial J_i}{\partial \theta_j}=0\quad \forall j\le i.\;}
+\]</span></p>
+<blockquote>
+<p>These are the standard “triangular” derivative identities for the body Jacobian. For the space Jacobian the signs/inequalities swap: <span class="math inline">\(\partial J^s_i/\partial\theta_j = \mathrm{ad}_{J^s_j} J^s_i\)</span> for <span class="math inline">\(j&lt;i\)</span>, zero otherwise.</p>
+</blockquote>
+<h2 id="assembling-the-manipulability-gradient">Assembling the manipulability gradient</h2>
+<p>Let the manipulator Hessian be the third‑order tensor <span class="math inline">\(\mathcal{H} \in \mathbb{R}^{6\times n\times n}\)</span> with components
+<span class="math display">\[
+\mathcal{H}_{k,i,j} := \frac{\partial (J)_{k,i}}{\partial \theta_j},\quad k\in\{1,\dots,6\},\; i,j\in\{1,\dots,n\}.
+\]</span>
+Denote the <span class="math inline">\(j\)</span>‑th slice along the third index by <span class="math inline">\(H^{(j)} := \partial J/\partial\theta_j \in \mathbb{R}^{6\times n}\)</span>. From the body identities above,
+<span class="math display">\[
+H^{(j)} = \big[\,-\,\mathrm{ad}_{J_j}J_1\;\cdots\;-\,\mathrm{ad}_{J_j}J_{j-1}\;\;0\;\cdots\;0\big].
+\]</span></p>
+<p>The gradient <span class="math inline">\(J_w\in\mathbb{R}^{1\times n}\)</span> thus has its <span class="math inline">\(j\)</span>-th component,
+<span class="math display">\[
+\boxed{\;J_{w,j} = \frac{\partial w}{\partial \theta_j} = w\,\mathrm{Tr}(H^{(j)} \, J^{\dagger})\in \mathbb{R}\;}
+\]</span>
+and using the triangular structure,
+<span class="math display">\[
+\mathrm{Tr}(H^{(j)} J^{\dagger}) = -\sum_{i=1}^{j-1} (J^{\dagger})_{i,:}\,\big(\mathrm{ad}_{J_j}J_i\big).
+\]</span>
+Here <span class="math inline">\((J^{\dagger})_{i,:}\in\mathbb{R}^{1\times 6}\)</span> is row <span class="math inline">\(i\)</span> of <span class="math inline">\(J^{\dagger}\)</span>.</p>
+<h2 id="practical-notes">Practical notes</h2>
+<ul>
+<li>Near singularities, <span class="math inline">\((J J^T)^{-1}\)</span> may be ill‑conditioned; use a damped inverse <span class="math inline">\((J J^T + \lambda^2 I)^{-1}\)</span> in practice.</li>
+<li>In implementation it is often numerically cleaner to compute <span class="math inline">\(\displaystyle w = \prod_i \sigma_i(J_{\text{task}})\)</span> directly from an SVD rather than forming <span class="math inline">\(\det(JJ^T)\)</span> explicitly.</li>
+<li>Dimensions: <span class="math inline">\(J\in \mathbb{R}^{6\times n}\)</span>, <span class="math inline">\(J^{\dagger}\in \mathbb{R}^{n\times 6}\)</span>, <span class="math inline">\(\mathcal{H}\in \mathbb{R}^{6\times n\times n}\)</span> with slice <span class="math inline">\(H^{(k)}\in \mathbb{R}^{6\times n}\)</span>; <span class="math inline">\(\mathrm{Tr}(H^{(k)} J^{\dagger})\)</span> is scalar.</li>
+<li>The body identities imply <span class="math inline">\(\partial J_i/\partial \theta_i = 0\)</span>. For the space Jacobian, self‑derivatives are also zero but the triangular structure flips.</li>
+</ul>
+<h2 id="references">References</h2>
+<ul>
+<li><a name="ty85">[1]</a> T. Yoshikawa, “Manipulability of Robotic Mechanisms,” IJRR, 1985.</li>
+<li><a name="mr17">[2]</a> K. M. Lynch, F. C. Park, Modern Robotics: Mechanics, Planning, and Control, 2017.</li>
+<li><a name="js05">[3]</a> J. Selig, Geometric Fundamentals of Robotics, 2005.</li>
+<li><a name="rm94">[4]</a> R. M. Murray, Z. Li, S. S. Sastry, A Mathematical Introduction to Robotic Manipulation, 1994.</li>
+<li><a name="gm02">[5]</a> G. Marani, J. Kim, J. Yuh, W. K. Chung, “A Real‑Time Approach for Singularity Avoidance in Resolved Motion Rate Control of Robotic Manipulators,” ICRA 2002.</li>
+</ul>
+
+{% endraw %}

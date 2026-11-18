@@ -1,0 +1,775 @@
+---
+title: "Recursive Newton–Euler Algorithm (RNEA)"
+collection: "robotics_notes"
+permalink: "/robotics-notes/rnea/"
+excerpt: "The **Recursive Newton–Euler Algorithm (RNEA)** computes the inverse dynamics of a robot."
+categories_path: "Dynamics"
+order: 3
+source: "https://github.com/wei-hsuan-cheng/robotics_notes/blob/main/dynamics/rnea/rnea.md"
+---
+
+{% raw %}
+<p class="notice--info">Rendered from <a href="https://github.com/wei-hsuan-cheng/robotics_notes/blob/main/dynamics/rnea/rnea.md"><i class="fab fa-github" aria-hidden="true"></i> robotics_notes/dynamics/rnea/rnea.md</a>.</p>
+
+<p><strong>Contents</strong></p>
+<ul>
+<li><a href="#1-brief-summary">1. Brief summary</a></li>
+<li><a href="#2-objects-and-notation">2. Objects and notation</a></li>
+<li><a href="#3-forward-pass-body-twist-recursion">3. Forward pass: body twist recursion</a></li>
+<li><a href="#4-forward-pass-body-acceleration-recursion">4. Forward pass: body acceleration recursion</a></li>
+<li><a href="#5-gravity-trick">5. Gravity trick</a></li>
+<li><a href="#6-local-rigid-body-dynamics-required-body-wrench">6. Local rigid-body dynamics: required body wrench</a></li>
+<li><a href="#7-backward-pass-subtree-wrench-recursion">7. Backward pass: subtree wrench recursion</a></li>
+<li><a href="#8-joint-torque-extraction">8. Joint torque extraction</a></li>
+<li><a href="#9-full-rnea-algorithm-in-tree-notation">9. Full RNEA algorithm in tree notation</a></li>
+<li><a href="#10-two-link-robot-example">10. Two-link robot example</a></li>
+<li><a href="#11-key-insights">11. Key insights</a></li>
+<li><a href="#appendix-a-deriving----and">Appendix A. Deriving <span class="math inline">\(\text{Ad}(\cdot)\)</span>, <span class="math inline">\(\text{Ad}^*(\cdot)\)</span>, <span class="math inline">\(\text{ad}(\cdot)\)</span>, and <span class="math inline">\(\text{ad}^*(\cdot)\)</span></a></li>
+<li><a href="#a1-finite-transform-of-twists">A.1 Finite transform of twists: <span class="math inline">\(\text{Ad}_T(\cdot)\)</span></a></li>
+<li><a href="#a2-finite-dual-transform-of-wrenches">A.2 Finite dual transform of wrenches: <span class="math inline">\(\text{Ad}_T^*(\cdot)\)</span></a></li>
+<li><a href="#a3-infinitesimal-transform-of-twists">A.3 Infinitesimal transform of twists: <span class="math inline">\(\text{ad}_{\mathcal{V}}(\cdot)\)</span></a></li>
+<li><a href="#a4-infinitesimal-dual-transform-of-wrenches">A.4 Infinitesimal dual transform of wrenches: <span class="math inline">\(\text{ad}_{\mathcal{V}}^*(\cdot)\)</span></a></li>
+<li><a href="#a5-relation-between-finite-and-infinitesimal-operators">A.5 Relation between finite and infinitesimal operators</a></li>
+<li><a href="#a6-summary-table---">A.6 Summary table: <span class="math inline">\(\text{Ad}(\cdot)\)</span>, <span class="math inline">\(\text{Ad}^*(\cdot)\)</span>, <span class="math inline">\(\text{ad}(\cdot)\)</span>, <span class="math inline">\(\text{ad}^*(\cdot)\)</span></a></li>
+<li><a href="#appendix-b-matching-modern-robotics-and-featherstone-notation">Appendix B. Matching Modern Robotics and Featherstone notation</a></li>
+<li><a href="#closing-remark">Closing remark</a></li>
+</ul>
+<hr />
+
+<ul>
+<li>Reference textbooks for RNEA
+<ul>
+<li><a name="fs08">[1]</a> <a href="https://link.springer.com/book/10.1007/978-1-4899-7560-7">(Featherstone 2008) Rigid body dynamics algorithms</a></li>
+<li><a name="mr17">[2]</a> <a href="https://hades.mech.northwestern.edu/images/7/7f/MR.pdf">(Kevin Lynch 2017) Modern Robotics: Mechanics, Planning, and Control</a></li>
+</ul>
+</li>
+</ul>
+<hr />
+<h2 id="1-brief-summary">1. Brief summary</h2>
+<p>The <strong>Recursive Newton–Euler Algorithm (RNEA)</strong> computes the inverse dynamics of a robot:</p>
+<div class="math display">\[
+\tau = \text{ID}(\text{model}, \, q, \, \dot q, \, \ddot q)
+\]</div>
+<p>That is, given:</p>
+<ul>
+<li>joint positions <span class="math inline">\(q\)</span></li>
+<li>joint velocities <span class="math inline">\(\dot q\)</span></li>
+<li>joint accelerations <span class="math inline">\(\ddot q\)</span></li>
+</ul>
+<p>it computes the required joint torques/forces <span class="math inline">\(\tau\)</span>.</p>
+<p>The key idea is to avoid explicitly forming the mass matrix <span class="math inline">\(M(q)\)</span>. Instead, RNEA performs:</p>
+<ol>
+<li>a <strong>forward pass</strong> to propagate <strong>body twists</strong> and <strong>body accelerations</strong> from root to leaves,</li>
+<li>a <strong>local rigid-body dynamics step</strong> to compute each link's required <strong>body wrench</strong>,</li>
+<li>a <strong>backward pass</strong> to propagate <strong>subtree wrenches</strong> from leaves to root and extract joint torques.</li>
+</ol>
+<p>In modern robotics language:</p>
+<ul>
+<li>motion lives in the twist space <span class="math inline">\(se(3)\)</span>,</li>
+<li>forces live in the wrench space <span class="math inline">\(se(3)^*\)</span>,</li>
+<li>transforms of twists use <span class="math inline">\(\text{Ad}(\cdot)\)</span>,</li>
+<li>transforms of wrenches use <span class="math inline">\(\text{Ad}^*(\cdot)\)</span>,</li>
+<li>instantaneous transport of twists uses <span class="math inline">\(\text{ad}(\cdot)\)</span>,</li>
+<li>instantaneous transport of wrenches uses <span class="math inline">\(\text{ad}^*(\cdot)\)</span>.</li>
+</ul>
+<p>A useful picture to keep in mind is <a href="#fig1">Fig. 1</a>. It matches the parent-child recursion used by RNEA. In the serial-chain special case shown here, each joint <span class="math inline">\(i\)</span> connects body <span class="math inline">\(i-1\)</span> to body <span class="math inline">\(i\)</span>, so equivalently <span class="math inline">\(\lambda(i)=i-1\)</span> and <span class="math inline">\(\mu(i)=\{i+1\}\)</span>. Note that each non-root body may actually have more than one children <span class="math inline">\(\mu(i) = \{ j,\, k,\, l,\, \dots \}\)</span>.</p>
+<p><a name="fig1"></a>
+<img src="https://raw.githubusercontent.com/wei-hsuan-cheng/robotics_notes/main/dynamics/rnea/kinematic_chain.png" alt="Generic serial kinematic chain used to interpret the RNEA recursions." /></p>
+<p><em>Fig. 1. Kinematic chain <a href="#fs08">[1]</a>.</em></p>
+<p>In the rest of this note, we use the body-frame convention, so <span class="math inline">\(S_i\)</span> is expressed in the child/body frame of link <span class="math inline">\(i\)</span>.</p>
+<hr />
+<h2 id="2-objects-and-notation">2. Objects and notation</h2>
+<p>For link <span class="math inline">\(i\)</span>:</p>
+<ul>
+<li><span class="math inline">\(\mathcal{V}_i \in \mathbb{R}^6\)</span>: body twist of link <span class="math inline">\(i\)</span>, expressed in the body frame of link <span class="math inline">\(i\)</span></li>
+<li><span class="math inline">\(\dot{\mathcal{V}}_i \in \mathbb{R}^6\)</span>: body acceleration of link <span class="math inline">\(i\)</span>, expressed in the body frame of link <span class="math inline">\(i\)</span></li>
+<li><span class="math inline">\(\mathcal{F}_i \in \mathbb{R}^6\)</span>: body wrench acting on link <span class="math inline">\(i\)</span></li>
+<li><span class="math inline">\(I_i \in \mathbb{R}^{6\times 6}\)</span>: body spatial inertia of link <span class="math inline">\(i\)</span></li>
+<li><span class="math inline">\(S_i \in \mathbb{R}^6\)</span>: <strong>body screw axis</strong> of joint <span class="math inline">\(i\)</span>, expressed in the child/body frame</li>
+<li><span class="math inline">\(\lambda(i)\)</span>: parent index of body <span class="math inline">\(i\)</span>; in a kinematic tree each non-root body has exactly one immediate parent</li>
+<li><span class="math inline">\(\mu(i) = \{ j,\, k,\, l,\, \dots \}\)</span>: set of immediate children of body <span class="math inline">\(i\)</span>; a body may have zero, one, or multiple immediate children</li>
+</ul>
+<p>See <a href="#fig2">Fig. 2</a> for this adjacency convention.</p>
+<p>We write twists and wrenches as:</p>
+<div class="math display">\[
+\mathcal{V} = \begin{bmatrix} \omega \\ v \end{bmatrix},
+\qquad
+\mathcal{F} = \begin{bmatrix} m \\ f \end{bmatrix}
+\]</div>
+<p>where:</p>
+<ul>
+<li><span class="math inline">\(\omega\)</span>: angular velocity</li>
+<li><span class="math inline">\(v\)</span>: linear velocity of the frame origin</li>
+<li><span class="math inline">\(m\)</span>: moment</li>
+<li><span class="math inline">\(f\)</span>: force</li>
+</ul>
+<hr />
+<h2 id="3-forward-pass-body-twist-recursion">3. Forward pass: body twist recursion</h2>
+<p>The body twist recursion is:</p>
+<div class="math display">\[
+\mathcal{V}_i = \text{Ad}_{T_{i,\lambda(i)}} \mathcal{V}_{\lambda(i)} + S_i \dot q_i
+\]</div>
+<p>Interpretation:</p>
+<ul>
+<li><span class="math inline">\(T_{i,\lambda(i)}\)</span>: the pose of frame <span class="math inline">\(\{\lambda(i)\}\)</span> as expressed in frame <span class="math inline">\(\{i\}\)</span>, so <span class="math inline">\(\text{Ad}_{T_{i,\lambda(i)}}\)</span> re-expresses a spatial motion from frame <span class="math inline">\(\{\lambda(i)\}\)</span> coordinates into frame <span class="math inline">\(\{i\}\)</span> coordinates</li>
+<li><span class="math inline">\(\text{Ad}_{T_{i,\lambda(i)}} \mathcal{V}_{\lambda(i)}\)</span> is the <strong>parent link's twist re-expressed in the child frame</strong></li>
+<li><span class="math inline">\(S_i \dot q_i\)</span> is the <strong>relative joint twist</strong> generated by the motion of joint <span class="math inline">\(i\)</span></li>
+</ul>
+<h3 id="insight">Insight</h3>
+<p>The child body twist is:</p>
+<blockquote>
+<p>inherited parent motion + relative joint motion.</p>
+</blockquote>
+<p>This is the twist-space statement of rigid kinematics.</p>
+<hr />
+<h2 id="4-forward-pass-body-acceleration-recursion">4. Forward pass: body acceleration recursion</h2>
+<p>Differentiate the twist recursion in moving body coordinates:</p>
+<div class="math display">\[
+\dot{\mathcal{V}}_i = \text{Ad}_{T_{i,\lambda(i)}} \dot{\mathcal{V}}_{\lambda(i)} + S_i \ddot q_i + \text{ad}_{\mathcal{V}_i}(S_i \dot q_i)
+\]</div>
+<p>Interpretation:</p>
+<ul>
+<li><span class="math inline">\(\text{Ad}_{T_{i,\lambda(i)}} \dot{\mathcal{V}}_{\lambda(i)}\)</span>: inherited parent acceleration</li>
+<li><span class="math inline">\(S_i \ddot q_i\)</span>: direct joint acceleration term</li>
+<li><span class="math inline">\(\text{ad}_{\mathcal{V}_i}(S_i \dot q_i)\)</span>: motion-induced correction caused by differentiating the joint twist in a body frame that is itself already moving</li>
+</ul>
+<h3 id="insight-1">Insight</h3>
+<p>Each term has a different physical meaning:</p>
+<ul>
+<li><span class="math inline">\(\text{Ad}_{T_{i,\lambda(i)}} \dot{\mathcal{V}}_{\lambda(i)}\)</span> is the acceleration body <span class="math inline">\(i\)</span> would have if it were momentarily <strong>welded</strong> to its parent body <span class="math inline">\(\lambda(i)\)</span>. It is just the parent's acceleration, re-expressed in frame <span class="math inline">\(i\)</span>.</li>
+<li><span class="math inline">\(S_i \ddot q_i\)</span> is the <strong>new relative acceleration injected by joint <span class="math inline">\(i\)</span></strong> through its joint acceleration.</li>
+<li><span class="math inline">\(\text{ad}_{\mathcal{V}_i}(S_i \dot q_i)\)</span> is the <strong>extra acceleration induced by the body's own current motion</strong> while the joint-rate contribution <span class="math inline">\(S_i \dot q_i\)</span> is being differentiated in moving body coordinates.</li>
+</ul>
+<p>So the child body acceleration is:</p>
+<blockquote>
+<p>inherited parent acceleration + relative joint acceleration + motion-induced correction.</p>
+</blockquote>
+<p>The first term is inherited, the second is actuated, and the third is motion-induced. The third term is the 6D analogue of familiar rotating-frame/Coriolis-type corrections.</p>
+<hr />
+<h2 id="5-gravity-trick">5. Gravity trick</h2>
+<p>For a fixed-base robot, physically the base twist is zero:</p>
+<div class="math display">\[
+\mathcal{V}_0 = 0
+\]</div>
+<p>The base's actual acceleration is also zero in the world. However, in RNEA one often initializes:</p>
+<div class="math display">\[
+\dot{\mathcal{V}}_0 = -g
+\]</div>
+<p>This is a <strong>fictitious initialization</strong> used to fold gravity into the acceleration recursion instead of adding gravitational wrench terms body-by-body.</p>
+<p>So:</p>
+<ul>
+<li>physical fixed base: <span class="math inline">\(\mathcal{V}_0 = 0\)</span>, actual <span class="math inline">\(\dot{\mathcal{V}}_0 = 0\)</span></li>
+<li>algorithm initialization: <span class="math inline">\(\mathcal{V}_0 = 0\)</span>, recursive seed <span class="math inline">\(\dot{\mathcal{V}}_0 = -g\)</span></li>
+</ul>
+<p>Both produce the same final gravity torques.</p>
+<hr />
+<h2 id="6-local-rigid-body-dynamics-required-body-wrench">6. Local rigid-body dynamics: required body wrench</h2>
+<p>Once <span class="math inline">\(\mathcal{V}_i\)</span> and <span class="math inline">\(\dot{\mathcal{V}}_i\)</span> are known, the required body wrench of link <span class="math inline">\(i\)</span> is:</p>
+<div class="math display">\[
+\mathcal{F}_i^{\text{body}} = I_i \dot{\mathcal{V}}_i + \text{ad}_{\mathcal{V}_i}^*(I_i \mathcal{V}_i)
+\]</div>
+<p>If an external wrench <span class="math inline">\(\mathcal{F}_i^{ext}\)</span> acts on the link, subtract it:</p>
+<div class="math display">\[
+\mathcal{F}_i = I_i \dot{\mathcal{V}}_i + \text{ad}_{\mathcal{V}_i}^*(I_i \mathcal{V}_i) - \mathcal{F}_i^{ext}
+\]</div>
+<p>Interpretation:</p>
+<ul>
+<li><span class="math inline">\(I_i \dot{\mathcal{V}}_i\)</span>: inertial wrench from acceleration</li>
+<li><span class="math inline">\(I_i \mathcal{V}_i\)</span>: momentum</li>
+<li><span class="math inline">\(\text{ad}_{\mathcal{V}_i}^*(I_i \mathcal{V}_i)\)</span>: bias wrench caused by differentiating momentum in a moving body frame</li>
+</ul>
+<h3 id="insight-2">Insight</h3>
+<p>This is the body-frame Newton–Euler equation. It is the moment where motion information is converted into required force information.</p>
+<hr />
+<h2 id="7-backward-pass-subtree-wrench-recursion">7. Backward pass: subtree wrench recursion</h2>
+<p>Let <span class="math inline">\(\mathcal{F}_i^{\uparrow}\)</span> denote the total wrench transmitted from the subtree rooted at body <span class="math inline">\(i\)</span> to its parent.</p>
+<p>Then:</p>
+<div class="math display">\[
+\mathcal{F}_i^{\uparrow} = \mathcal{F}_i + \sum_{j \in \mu(i)} \text{Ad}_{T_{i,j}}^* \mathcal{F}_j^{\uparrow}
+\]</div>
+<p>Here <code>parent</code> and <code>children</code> mean only the <strong>adjacent</strong> neighbors of body <span class="math inline">\(i\)</span> in the kinematic tree, not all ancestors or all descendants:</p>
+<ul>
+<li><span class="math inline">\(\lambda(i)\)</span>: the immediate parent of body <span class="math inline">\(i\)</span></li>
+<li><span class="math inline">\(\mu(i) = \{ j,\, k,\, l,\, \dots \}\)</span>: the set of immediate children of body <span class="math inline">\(i\)</span></li>
+</ul>
+<p><a name="fig2"></a></p>
+<p><a href="#fig2">Fig. 2</a> shows exactly this local relationship for one body in a tree:</p>
+<p><img src="https://raw.githubusercontent.com/wei-hsuan-cheng/robotics_notes/main/dynamics/rnea/force_acting_on_body_i.png" alt="Immediate parent and immediate children of body i in the backward wrench recursion." /></p>
+<p><em>Fig. 2. Forces acting on body <span class="math inline">\(i\)</span> <a href="#fs08">[1]</a>.</em></p>
+<p>Interpretation:</p>
+<ul>
+<li>the parent must support link <span class="math inline">\(i\)</span>'s own wrench demand</li>
+<li>and also every child subtree's wrench demand, transformed into frame <span class="math inline">\(i\)</span></li>
+</ul>
+<p>This is why the backward pass goes from leaves to root.</p>
+<hr />
+<h2 id="8-joint-torque-extraction">8. Joint torque extraction</h2>
+<p>The scalar actuator effort at joint <span class="math inline">\(i\)</span> is the component of the transmitted wrench along the joint screw axis:</p>
+<div class="math display">\[
+\tau_i = S_i^T \mathcal{F}_i^{\uparrow}
+\]</div>
+<p>This is a power-consistent projection:</p>
+<div class="math display">\[
+\tau_i \dot q_i = (\mathcal{F}_i^{\uparrow})^T (S_i \dot q_i)
+\]</div>
+<p>So <span class="math inline">\(S_i\)</span> selects the wrench component along the allowed joint motion subspace.</p>
+<h3 id="insight-actuator-effort-versus-reaction-load">Insight: actuator effort versus reaction load</h3>
+<p>The full transmitted wrench <span class="math inline">\(\mathcal{F}_i^{\uparrow}\)</span> does <strong>not</strong> need to be supplied by actuator torque alone.</p>
+<ul>
+<li><span class="math inline">\(\tau_i = S_i^T \mathcal{F}_i^{\uparrow}\)</span> extracts only the component along the joint's allowed motion subspace.</li>
+<li>The remaining components are <strong>reaction wrench</strong> components enforced by the joint constraints and carried structurally by the links, bearings, and housing.</li>
+<li>Those reaction loads are passed into the parent link, combined with that link's own load, and then transmitted further upward by the same backward recursion.</li>
+<li>As a result, the base/support sees the final net support wrench of the whole chain.</li>
+</ul>
+<p>Write the reaction part as a residual wrench <span class="math inline">\(\mathcal{R}_i\)</span> such that</p>
+<div class="math display">\[
+S_i^T \mathcal{R}_i = 0.
+\]</div>
+<p>Then the motor supplies only the component along the joint's allowed motion subspace</p>
+<div class="math display">\[
+\tau_i = S_i^T \mathcal{F}_i^{\uparrow},
+\]</div>
+<p>while the residual reaction part is still physically transmitted through the joint structure.</p>
+<blockquote>
+<p>The actuator supplies only the wrench component along the joint's allowed motion subspace, while the remaining constrained wrench components are carried structurally as reaction loads and transmitted to more proximal links and ultimately to the base/support.</p>
+</blockquote>
+<h3 id="example-fully-stretched-arm-under-axial-end-effector-force">Example: fully stretched arm under axial end-effector force</h3>
+<p>Consider an ideal serial arm that is fully stretched, and suppose a pure end-effector force is applied exactly along the arm's own axis.</p>
+<p>In that special case:</p>
+<ul>
+<li>the line of action can pass through the joint axes so the moment about each joint axis is zero,</li>
+<li>the corresponding joint torques from that axial force can therefore be zero or very small,</li>
+<li>but the load is still physically present: it is carried as axial reaction load through the links and joints and finally into the base/support.</li>
+</ul>
+<p>So the correct statement is not that the load disappears, but that this particular wrench lies largely in the <strong>reaction-load directions</strong> rather than in the actuator-effort directions.</p>
+<p>This is also why singular configurations can be deceptive:</p>
+<ul>
+<li>motion authority in some task-space directions becomes poor,</li>
+<li>yet certain external loads in those same directions can still be carried efficiently by the mechanism as structural load.</li>
+</ul>
+<hr />
+<h2 id="9-full-rnea-algorithm-in-tree-notation">9. Full RNEA algorithm in tree notation</h2>
+<p>I use the tree notation <span class="math inline">\(\lambda(i)\)</span> and <span class="math inline">\(\mu(i)\)</span> for parent/child relations in the main derivation, while the Modern Robotics comparison in Appendix B specializes this to the serial-chain indexing <span class="math inline">\(i-1\)</span> and <span class="math inline">\(i+1\)</span>.</p>
+<h3 id="forward-pass">Forward pass</h3>
+<div class="math display">\[
+\mathcal{V}_i = \text{Ad}_{T_{i,\lambda(i)}} \mathcal{V}_{\lambda(i)} + S_i \dot q_i
+\]</div>
+<div class="math display">\[
+\dot{\mathcal{V}}_i = \text{Ad}_{T_{i,\lambda(i)}} \dot{\mathcal{V}}_{\lambda(i)} + S_i \ddot q_i + \text{ad}_{\mathcal{V}_i}(S_i \dot q_i)
+\]</div>
+<div class="math display">\[
+\mathcal{F}_i = I_i \dot{\mathcal{V}}_i + \text{ad}_{\mathcal{V}_i}^*(I_i \mathcal{V}_i) - \mathcal{F}_i^{ext}
+\]</div>
+<h3 id="backward-pass">Backward pass</h3>
+<div class="math display">\[
+\mathcal{F}_i^{\uparrow} = \mathcal{F}_i + \sum_{j \in \mu(i)} \text{Ad}_{T_{i,j}}^* \mathcal{F}_j^{\uparrow}
+\]</div>
+<div class="math display">\[
+\tau_i = S_i^T \mathcal{F}_i^{\uparrow}
+\]</div>
+<hr />
+<h2 id="10-two-link-robot-example">10. Two-link robot example</h2>
+<p>Consider a 2-link serial robot with link 1 as parent and link 2 as child.</p>
+<p>We use the child-body frame convention.</p>
+<h3 id="101-setup">10.1 Setup</h3>
+<p>Joint screw axes:</p>
+<div class="math display">\[
+S_1 = \begin{bmatrix} 0 \\ 0 \\ 1 \\ 0 \\ 0 \\ 0 \end{bmatrix},
+\qquad
+S_2 = \begin{bmatrix} 0 \\ 0 \\ 1 \\ 0 \\ 0 \\ 0 \end{bmatrix}
+\]</div>
+<p>These represent revolute joints about the local <span class="math inline">\(z\)</span>-axis.</p>
+<p>Base initialization:</p>
+<div class="math display">\[
+\mathcal{V}_0 = 0,
+\qquad
+\dot{\mathcal{V}}_0 = -g
+\]</div>
+<p>We denote transforms:</p>
+<ul>
+<li><span class="math inline">\(T_{1,0}\)</span>: parent-to-child transform from base to link 1 frame</li>
+<li><span class="math inline">\(T_{2,1}\)</span>: transform from link 1 frame to link 2 frame</li>
+</ul>
+<h3 id="102-twist-forward-pass">10.2 Twist forward pass</h3>
+<p>For link 1:</p>
+<div class="math display">\[
+\mathcal{V}_1 = \text{Ad}_{T_{1,0}} \mathcal{V}_0 + S_1 \dot q_1 = S_1 \dot q_1
+\]</div>
+<p>For link 2:</p>
+<div class="math display">\[
+\mathcal{V}_2 = \text{Ad}_{T_{2,1}} \mathcal{V}_1 + S_2 \dot q_2
+\]</div>
+<p>Interpretation:</p>
+<ul>
+<li>link 1 has only its own joint twist, because the base is fixed</li>
+<li>link 2 inherits link 1 motion, re-expressed in frame 2, then adds its own joint twist</li>
+</ul>
+<h3 id="103-acceleration-forward-pass">10.3 Acceleration forward pass</h3>
+<p>For link 1:</p>
+<div class="math display">\[
+\dot{\mathcal{V}}_1 = \text{Ad}_{T_{1,0}} \dot{\mathcal{V}}_0 + S_1 \ddot q_1 + \text{ad}_{\mathcal{V}_1}(S_1 \dot q_1)
+\]</div>
+<p>Since <span class="math inline">\(\mathcal{V}_1 = S_1 \dot q_1\)</span>, the last term is:</p>
+<div class="math display">\[
+\text{ad}_{\mathcal{V}_1}(S_1 \dot q_1) = \text{ad}_{S_1 \dot q_1}(S_1 \dot q_1)=0
+\]</div>
+<p>because the Lie bracket of a twist with itself is zero.</p>
+<p>So:</p>
+<div class="math display">\[
+\dot{\mathcal{V}}_1 = \text{Ad}_{T_{1,0}} \dot{\mathcal{V}}_0 + S_1 \ddot q_1
+\]</div>
+<p>For link 2:</p>
+<div class="math display">\[
+\dot{\mathcal{V}}_2 = \text{Ad}_{T_{2,1}} \dot{\mathcal{V}}_1 + S_2 \ddot q_2 + \text{ad}_{\mathcal{V}_2}(S_2 \dot q_2)
+\]</div>
+<p>Now the motion-induced term is generally nonzero, because link 2 sees a mix of inherited twist and its own joint twist.</p>
+<h3 id="104-local-body-wrenches">10.4 Local body wrenches</h3>
+<p>Link 2 body wrench:</p>
+<div class="math display">\[
+\mathcal{F}_2 = I_2 \dot{\mathcal{V}}_2 + \text{ad}_{\mathcal{V}_2}^*(I_2 \mathcal{V}_2) - \mathcal{F}_2^{ext}
+\]</div>
+<p>Link 1 body wrench:</p>
+<div class="math display">\[
+\mathcal{F}_1 = I_1 \dot{\mathcal{V}}_1 + \text{ad}_{\mathcal{V}_1}^*(I_1 \mathcal{V}_1) - \mathcal{F}_1^{ext}
+\]</div>
+<h3 id="105-wrench-backward-pass">10.5 Wrench backward pass</h3>
+<p>Link 2 is a leaf, so:</p>
+<div class="math display">\[
+\mathcal{F}_2^{\uparrow} = \mathcal{F}_2
+\]</div>
+<p>Joint 2 torque:</p>
+<div class="math display">\[
+\tau_2 = S_2^T \mathcal{F}_2^{\uparrow} = S_2^T \mathcal{F}_2
+\]</div>
+<p>Now propagate to link 1:</p>
+<div class="math display">\[
+\mathcal{F}_1^{\uparrow} = \mathcal{F}_1 + \text{Ad}_{T_{1,2}}^* \mathcal{F}_2^{\uparrow}
+\]</div>
+<p>Joint 1 torque:</p>
+<div class="math display">\[
+\tau_1 = S_1^T \mathcal{F}_1^{\uparrow}
+\]</div>
+<h3 id="106-what-this-example-shows">10.6 What this example shows</h3>
+<ul>
+<li>The <strong>forward pass</strong> builds link motion recursively:
+<ul>
+<li>link 2 twist depends on its own joint twist and link 1 twist</li>
+<li>link 2 acceleration depends on its own joint acceleration, and link 1 acceleration plus a motion-induced correction</li>
+</ul>
+</li>
+<li>The <strong>backward pass</strong> builds subtree wrench recursively:
+<ul>
+<li>link 2 contributes to joint 2 torque directly</li>
+<li>its required wrench is transformed and added to link 1's wrench</li>
+<li>thus joint 1 must support both link 1 and link 2 dynamics</li>
+</ul>
+</li>
+</ul>
+<p>This is exactly why proximal joints usually carry more dynamic load.</p>
+<hr />
+<h2 id="11-key-insights">11. Key insights</h2>
+<h3 id="insight-1-motion-forward-force-backward">Insight 1: motion forward, force backward</h3>
+<p>RNEA follows causality:</p>
+<ul>
+<li>motion is inherited from ancestors, so twists and accelerations propagate forward</li>
+<li>loads accumulate from descendants, so wrenches propagate backward</li>
+</ul>
+<h3 id="insight-2-body-coordinates-make-inertia-constant">Insight 2: body coordinates make inertia constant</h3>
+<p>Body spatial inertia <span class="math inline">\(I_i\)</span> is constant in the body frame. This is a major reason the algorithm is efficient.</p>
+<h3 id="insight-3-nonlinear-terms-appear-locally">Insight 3: nonlinear terms appear locally</h3>
+<p>Instead of one giant symbolic <span class="math inline">\(C(q,\dot q)\dot q\)</span>, RNEA encodes nonlinear rigid-body effects locally through:</p>
+<ul>
+<li><span class="math inline">\(\text{ad}_{\mathcal{V}_i}(S_i \dot q_i)\)</span></li>
+<li><span class="math inline">\(\text{ad}_{\mathcal{V}_i}^*(I_i \mathcal{V}_i)\)</span></li>
+</ul>
+<h3 id="insight-4-joint-torque-is-a-projection-not-the-whole-wrench">Insight 4: joint torque is a projection, not the whole wrench</h3>
+<p>The propagated wrench <span class="math inline">\(\mathcal{F}_i^{\uparrow}\)</span> is a full 6D wrench. The actuator torque <span class="math inline">\(\tau_i\)</span> is only its component along the joint screw axis.</p>
+<h3 id="insight-5-what-rnea-computes-beyond-joint-torques">Insight 5: what RNEA computes beyond joint torques</h3>
+<p>Although RNEA is usually introduced as an <strong>inverse dynamics algorithm for computing joint torques</strong>
+<span class="math display">\[
+\tau = \text{ID}(q,\dot{q},\ddot{q}),
+\]</span>
+internally it computes much richer mechanical information than just the actuator effort.</p>
+<p>In particular, during the backward pass RNEA propagates a full <strong>6D wrench</strong> through each link and joint:
+<span class="math display">\[
+\mathcal{F}_i^{\uparrow} =
+\mathcal{F}_i +
+\sum_{j \in \mathrm{children}(i)} \operatorname{Ad}_{T_{i,j}}^* \mathcal{F}_j^{\uparrow}.
+\]</span>
+This propagated wrench contains:</p>
+<ul>
+<li>the link's own inertial wrench,</li>
+<li>bias/Coriolis/centrifugal effects,</li>
+<li>gravity effects,</li>
+<li>external wrench contributions,</li>
+<li>and the transmitted load from the entire descendant subtree.</li>
+</ul>
+<p>The actuator torque is only the component of this wrench along the joint screw axis:
+<span class="math display">\[
+\tau_i = S_i^T \mathcal{F}_i^{\uparrow}.
+\]</span></p>
+<p>So, conceptually, <strong>RNEA computes the full internal wrench transmission in the mechanism</strong>, and the joint torque is obtained as a projection of that wrench onto the actuated motion subspace.</p>
+<p>This is why RNEA can also be interpreted as giving access to:</p>
+<ul>
+<li>internal joint transmitted forces/moments,</li>
+<li>structural load paths,</li>
+<li>reaction loads at bearings or passive constraints,</li>
+<li>and subtree wrench accumulation,</li>
+</ul>
+<p>not just the scalar motor torque command.</p>
+<hr />
+<h2 id="appendix-a-deriving----and">Appendix A. Deriving <span class="math inline">\(\text{Ad}(\cdot)\)</span>, <span class="math inline">\(\text{Ad}^*(\cdot)\)</span>, <span class="math inline">\(\text{ad}(\cdot)\)</span>, and <span class="math inline">\(\text{ad}^*(\cdot)\)</span></h2>
+<h2 id="a1-finite-transform-of-twists">A.1 Finite transform of twists: <span class="math inline">\(\text{Ad}_T(\cdot)\)</span></h2>
+<p>Let a rigid transform be:</p>
+<div class="math display">\[
+T = \begin{bmatrix} R &amp; p \\ 0 &amp; 1 \end{bmatrix}
+\]</div>
+<p>Here <span class="math inline">\(\text{Ad}_T\)</span> is a <strong>change-of-coordinates operator for one and the same physical twist</strong>. It does not describe a different motion. Instead, it tells us how the twist of a single rigid body, point, or end-effector is written when we keep the physical motion fixed but express it in another frame.</p>
+<p>Suppose a body twist in one frame is:</p>
+<div class="math display">\[
+\mathcal{V} = \begin{bmatrix} \omega \\ v \end{bmatrix}
+\]</div>
+<p>Under a rigid change of coordinates, angular velocity rotates as:</p>
+<div class="math display">\[
+\omega&#x27; = R\omega
+\]</div>
+<p>Linear velocity at the new origin becomes:</p>
+<div class="math display">\[
+v&#x27; = p \times (R\omega) + Rv
+\]</div>
+<p>Therefore:</p>
+<div class="math display">\[
+\mathcal{V}&#x27; = \text{Ad}_T \mathcal{V}
+\]</div>
+<p>with</p>
+<div class="math display">\[
+\boxed{
+\text{Ad}_T =
+\begin{bmatrix}
+R &amp; 0 \\
+[p]_\times R &amp; R
+\end{bmatrix}
+}
+\]</div>
+<p>This is the finite rigid transform rule for twists.</p>
+<hr />
+<h2 id="a2-finite-dual-transform-of-wrenches">A.2 Finite dual transform of wrenches: <span class="math inline">\(\text{Ad}_T^*(\cdot)\)</span></h2>
+<p>Twists and wrenches pair by power:</p>
+<div class="math display">\[
+\mathcal{F}^T \mathcal{V}
+\]</div>
+<p>We require power to be invariant under coordinate change <span class="math inline">\(T\)</span>:</p>
+<div class="math display">\[
+\mathcal{F}^T \mathcal{V} = (\text{Ad}_T^* \mathcal{F})^T (\text{Ad}_T \mathcal{V})
+\]</div>
+<p>for all <span class="math inline">\(\mathcal{F}, \mathcal{V}\)</span>.</p>
+<p>This implies:</p>
+<div class="math display">\[
+\boxed{
+\text{Ad}_T^* = (\text{Ad}_T^{-1})^T
+}
+\]</div>
+<p>Carrying out the block-matrix calculation gives:</p>
+<div class="math display">\[
+\boxed{
+\text{Ad}_T^* =
+\begin{bmatrix}
+R &amp; [p]_\times R \\
+0 &amp; R
+\end{bmatrix}
+}
+\]</div>
+<p>up to transform-direction convention.</p>
+<h3 id="meaning">Meaning</h3>
+<ul>
+<li><span class="math inline">\(\text{Ad}_T(\cdot)\)</span>: finite transport of twists</li>
+<li><span class="math inline">\(\text{Ad}_T^*(\cdot)\)</span>: finite transport of wrenches</li>
+</ul>
+<hr />
+<h2 id="a3-infinitesimal-transform-of-twists">A.3 Infinitesimal transform of twists: <span class="math inline">\(\text{ad}_{\mathcal{V}}(\cdot)\)</span></h2>
+<p>Now consider a body moving instantaneously with twist:</p>
+<div class="math display">\[
+\mathcal{V} = \begin{bmatrix} \omega \\ v \end{bmatrix}
+\]</div>
+<p>The induced transport of another twist <span class="math inline">\(\mathcal{U}\)</span> is given by the Lie bracket:</p>
+<div class="math display">\[
+\text{ad}_{\mathcal{V}} \mathcal{U} = [\mathcal{V},\mathcal{U}]
+\]</div>
+<p>In matrix form:</p>
+<div class="math display">\[
+\boxed{
+\text{ad}_{\mathcal{V}} =
+\begin{bmatrix}
+[\omega]_\times &amp; 0 \\
+[v]_\times &amp; [\omega]_\times
+\end{bmatrix}
+}
+\]</div>
+<p>so that</p>
+<div class="math display">\[
+\text{ad}_{\mathcal{V}} \mathcal{U} = \mathcal{V} \times \mathcal{U}
+\]</div>
+<p>So <span class="math inline">\(\text{ad}_{\mathcal{V}} \mathcal{U}\)</span> is the same object written in two equivalent languages: as the <strong>Lie bracket</strong> <span class="math inline">\([\mathcal{V},\mathcal{U}]\)</span> and as the <strong>6D spatial cross-product</strong> <span class="math inline">\(\mathcal{V} \times \mathcal{U}\)</span>.</p>
+<p>This is the infinitesimal motion-side transport operator.</p>
+<hr />
+<h2 id="a4-infinitesimal-dual-transform-of-wrenches">A.4 Infinitesimal dual transform of wrenches: <span class="math inline">\(\text{ad}_{\mathcal{V}}^*(\cdot)\)</span></h2>
+<p>We derive <span class="math inline">\(\text{ad}_{\mathcal{V}}^*(\cdot)\)</span> from the requirement that the motion-induced contributions do not create artificial power.</p>
+<p>Let <span class="math inline">\(\mathcal{U}\)</span> be a twist and <span class="math inline">\(\mathcal{F}\)</span> be a wrench, both expressed in a frame moving with twist <span class="math inline">\(\mathcal{V}\)</span>. Require the induced frame-motion contributions to satisfy:</p>
+<div class="math display">\[
+\frac{d}{dt}(\mathcal{F}^T \mathcal{U}) = 0
+\]</div>
+<p>for the pure transport part.</p>
+<p>So:</p>
+<div class="math display">\[
+\dot{\mathcal{F}}^T \mathcal{U} + \mathcal{F}^T \dot{\mathcal{U}} = 0
+\]</div>
+<p>If the twist transport law is:</p>
+<div class="math display">\[
+\dot{\mathcal{U}} = \text{ad}_{\mathcal{V}} \mathcal{U}
+\]</div>
+<p>and we define the wrench transport law by:</p>
+<div class="math display">\[
+\dot{\mathcal{F}} = \text{ad}_{\mathcal{V}}^* \mathcal{F}
+\]</div>
+<p>then:</p>
+<div class="math display">\[
+(\text{ad}_{\mathcal{V}}^* \mathcal{F})^T \mathcal{U} + \mathcal{F}^T(\text{ad}_{\mathcal{V}} \mathcal{U}) = 0
+\]</div>
+<p>for all <span class="math inline">\(\mathcal{F},\mathcal{U}\)</span>.</p>
+<p>Thus:</p>
+<div class="math display">\[
+\boxed{
+(\text{ad}_{\mathcal{V}}^* \mathcal{F})^T \mathcal{U} = -\mathcal{F}^T(\text{ad}_{\mathcal{V}} \mathcal{U})
+}
+\]</div>
+<p>Since this holds for all <span class="math inline">\(\mathcal{F},\mathcal{U}\)</span>, we get:</p>
+<div class="math display">\[
+\boxed{
+\text{ad}_{\mathcal{V}}^* = -\text{ad}_{\mathcal{V}}^T
+}
+\]</div>
+<p>Now using the explicit matrix for <span class="math inline">\(\text{ad}_{\mathcal{V}}\)</span>:</p>
+<div class="math display">\[
+\text{ad}_{\mathcal{V}} =
+\begin{bmatrix}
+[\omega]_\times &amp; 0 \\
+[v]_\times &amp; [\omega]_\times
+\end{bmatrix}
+\]</div>
+<p>and the identity <span class="math inline">\([a]_\times^T = -[a]_\times\)</span>, we obtain:</p>
+<div class="math display">\[
+\boxed{
+\text{ad}_{\mathcal{V}}^* =
+\begin{bmatrix}
+[\omega]_\times &amp; [v]_\times \\
+0 &amp; [\omega]_\times
+\end{bmatrix}
+}
+\]</div>
+<p>Therefore, for a wrench <span class="math inline">\(\mathcal{F} = \begin{bmatrix} m \\ f \end{bmatrix}\)</span>:</p>
+<div class="math display">\[
+\text{ad}_{\mathcal{V}}^* \mathcal{F} =
+\begin{bmatrix}
+\omega \times m + v \times f \\
+\omega \times f
+\end{bmatrix}
+\]</div>
+<p>This is the infinitesimal force-side transport operator.</p>
+<hr />
+<h2 id="a5-relation-between-finite-and-infinitesimal-operators">A.5 Relation between finite and infinitesimal operators</h2>
+<p>The lowercase operators are the infinitesimal versions of the uppercase ones.</p>
+<p>Here the hat map converts the 6D twist vector into its <span class="math inline">\(4 \times 4\)</span> matrix representation in <span class="math inline">\(se(3)\)</span>:</p>
+<div class="math display">\[
+\mathcal{V} =
+\begin{bmatrix}
+\omega \\
+v
+\end{bmatrix}
+\quad \longmapsto \quad
+\widehat{\mathcal{V}} =
+\begin{bmatrix}
+[\omega]_\times &amp; v \\
+0 &amp; 0
+\end{bmatrix}.
+\]</div>
+<p>Then</p>
+<div class="math display">\[
+\exp(\widehat{\mathcal{V}}\, dt) \in SE(3)
+\]</div>
+<p>is the small rigid transform generated by the twist <span class="math inline">\(\mathcal{V}\)</span> over time <span class="math inline">\(dt\)</span>.</p>
+<p>Very roughly:</p>
+<div class="math display">\[
+\text{Ad}_{\exp(\widehat{\mathcal{V}}\, dt)} \approx I + \text{ad}_{\mathcal{V}} dt
+\]</div>
+<p>and therefore</p>
+<div class="math display">\[
+\text{Ad}_{\exp(\widehat{\mathcal{V}}\, dt)}^* = (\text{Ad}_{\exp(\widehat{\mathcal{V}}\, dt)}^{-1})^T
+\approx I - \text{ad}_{\mathcal{V}}^T dt
+\]</div>
+<p>so:</p>
+<div class="math display">\[
+\boxed{
+\text{ad}_{\mathcal{V}}^* = -\text{ad}_{\mathcal{V}}^T
+}
+\]</div>
+<p>This is the clean bridge between:</p>
+<ul>
+<li>finite frame transforms: <span class="math inline">\(\text{Ad}(\cdot), \text{Ad}^*(\cdot)\)</span></li>
+<li>instantaneous moving-frame transport: <span class="math inline">\(\text{ad}(\cdot), \text{ad}^*(\cdot)\)</span></li>
+</ul>
+<hr />
+<h2 id="a6-summary-table---">A.6 Summary table: <span class="math inline">\(\text{Ad}(\cdot)\)</span>, <span class="math inline">\(\text{Ad}^*(\cdot)\)</span>, <span class="math inline">\(\text{ad}(\cdot)\)</span>, <span class="math inline">\(\text{ad}^*(\cdot)\)</span></h2>
+<p>The four operators split naturally into <strong>finite change-of-coordinates operators</strong> and <strong>infinitesimal moving-frame transport operators</strong>:</p>
+<table>
+<thead>
+<tr>
+<th>Operator</th>
+<th>Acts on</th>
+<th>Finite or infinitesimal</th>
+<th>What it does</th>
+<th>Key insight</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><span class="math inline">\(\text{Ad}_T(\cdot)\)</span></td>
+<td>twist / motion vector</td>
+<td>finite</td>
+<td>re-expresses the <strong>same physical twist</strong> in another frame related by rigid transform <span class="math inline">\(T\)</span></td>
+<td>Lie <strong>group</strong> adjoint on motions</td>
+</tr>
+<tr>
+<td><span class="math inline">\(\text{Ad}_T^*(\cdot)\)</span></td>
+<td>wrench / force vector</td>
+<td>finite</td>
+<td>re-expresses the <strong>same physical wrench</strong> in another frame related by rigid transform <span class="math inline">\(T\)</span></td>
+<td>dual Lie <strong>group</strong> adjoint on forces</td>
+</tr>
+<tr>
+<td><span class="math inline">\(\text{ad}_{\mathcal{V}}(\cdot)\)</span></td>
+<td>twist / motion vector</td>
+<td>infinitesimal</td>
+<td>gives the instantaneous transport of one twist induced by a moving frame with twist <span class="math inline">\(\mathcal{V}\)</span></td>
+<td>Lie <strong>algebra</strong> adjoint on motions; this is not just a static coordinate change</td>
+</tr>
+<tr>
+<td><span class="math inline">\(\text{ad}_{\mathcal{V}}^*(\cdot)\)</span></td>
+<td>wrench / force vector</td>
+<td>infinitesimal</td>
+<td>gives the instantaneous transport of a wrench induced by a moving frame with twist <span class="math inline">\(\mathcal{V}\)</span></td>
+<td>dual Lie <strong>algebra</strong> adjoint on forces; chosen so twist-wrench power pairing is preserved</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="appendix-b-matching-modern-robotics-and-featherstone-notation">Appendix B. Matching Modern Robotics and Featherstone notation</h2>
+<p>For direct comparison with Modern Robotics, specialize the general tree notation to a serial open chain. In the forward pass, the predecessor of body <span class="math inline">\(i\)</span> is body <span class="math inline">\(i-1\)</span>. In the backward pass, the accumulated wrench on body <span class="math inline">\(i\)</span> is pulled back from the unique distal child body <span class="math inline">\(i+1\)</span>. The backward-pass boundary condition is</p>
+<div class="math display">\[
+\mathcal{F}_{n+1}^{\uparrow} = \mathcal{F}_{tip}.
+\]</div>
+<p>I keep the explicit notation <span class="math inline">\(\mathcal{F}_i^{\uparrow}\)</span> for the accumulated transmitted wrench, instead of overloading <span class="math inline">\(\mathcal{F}_i\)</span> the way Modern Robotics does in Equation (8.53).</p>
+<p>For the same reason, I also write <span class="math inline">\(f_i^{\uparrow}\)</span> below for the propagated Featherstone wrench, even though Featherstone often reuses <span class="math inline">\(f_i\)</span> after child accumulation.</p>
+<table>
+<thead>
+<tr>
+<th>This note in serial-chain form</th>
+<th>Featherstone-style notation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>body twist <span class="math inline">\(\mathcal{V}_i\)</span></td>
+<td><span class="math inline">\(v_i\)</span></td>
+</tr>
+<tr>
+<td>body acceleration <span class="math inline">\(\dot{\mathcal{V}}_i\)</span></td>
+<td><span class="math inline">\(a_i\)</span></td>
+</tr>
+<tr>
+<td>local body wrench <span class="math inline">\(\mathcal{F}_i\)</span></td>
+<td>local/body wrench <span class="math inline">\(f_i\)</span></td>
+</tr>
+<tr>
+<td>accumulated transmitted wrench <span class="math inline">\(\mathcal{F}_i^{\uparrow}\)</span></td>
+<td>accumulated wrench <span class="math inline">\(f_i^{\uparrow}\)</span></td>
+</tr>
+<tr>
+<td>body spatial inertia <span class="math inline">\(I_i\)</span></td>
+<td><span class="math inline">\(I_i\)</span></td>
+</tr>
+<tr>
+<td>body screw axis <span class="math inline">\(S_i\)</span></td>
+<td><span class="math inline">\(S_i\)</span></td>
+</tr>
+<tr>
+<td>predecessor body index in the forward pass <span class="math inline">\(i-1\)</span></td>
+<td>serial-chain specialization of <span class="math inline">\(\lambda(i)\)</span></td>
+</tr>
+<tr>
+<td>unique distal child body index in the backward pass <span class="math inline">\(i+1\)</span></td>
+<td><span class="math inline">\(\mu(i)=\{i+1\}\)</span></td>
+</tr>
+<tr>
+<td><span class="math inline">\(\text{ad}_{\mathcal{V}_i}(\cdot)\)</span>: Lie algebra adjoint on motions</td>
+<td><span class="math inline">\(v_i \times (\cdot)\)</span></td>
+</tr>
+<tr>
+<td><span class="math inline">\(\text{ad}_{\mathcal{V}_i}^*(\cdot)\)</span>: dual Lie algebra adjoint on forces</td>
+<td><span class="math inline">\(v_i \times^* (\cdot)\)</span></td>
+</tr>
+<tr>
+<td><span class="math inline">\(\text{Ad}_T(\cdot)\)</span>: Lie group adjoint for finite motion transforms</td>
+<td>motion transform <span class="math inline">\(X(\cdot)\)</span></td>
+</tr>
+<tr>
+<td><span class="math inline">\(\text{Ad}_T^*(\cdot)\)</span>: dual Lie group adjoint for finite force transforms</td>
+<td>force transform <span class="math inline">\(X^*(\cdot)\)</span></td>
+</tr>
+</tbody>
+</table>
+<p>So the serial-chain Modern Robotics-style equations and the Featherstone tree-form equations become:</p>
+<h3 id="modern-robotics-form-2">Modern Robotics form <a href="#mr17">[2]</a></h3>
+<div class="math display">\[
+\mathcal{V}_i = \text{Ad}_{T_{i,i-1}} \mathcal{V}_{i-1} + S_i \dot q_i
+\]</div>
+<div class="math display">\[
+\dot{\mathcal{V}}_i = \text{Ad}_{T_{i,i-1}} \dot{\mathcal{V}}_{i-1} + S_i \ddot q_i + \text{ad}_{\mathcal{V}_i}(S_i \dot q_i)
+\]</div>
+<div class="math display">\[
+\mathcal{F}_i = I_i \dot{\mathcal{V}}_i + \text{ad}_{\mathcal{V}_i}^*(I_i \mathcal{V}_i) - \mathcal{F}_i^{ext}
+\]</div>
+<div class="math display">\[
+\mathcal{F}_i^{\uparrow} = \text{Ad}_{T_{i+1,i}}^* \mathcal{F}_{i+1}^{\uparrow} + \mathcal{F}_i
+\]</div>
+<div class="math display">\[
+\tau_i = S_i^T \mathcal{F}_i^{\uparrow}
+\]</div>
+<h3 id="featherstone-form-1">Featherstone form <a href="#fs08">[1]</a></h3>
+<div class="math display">\[
+v_i = X_{i,\lambda(i)} v_{\lambda(i)} + S_i \dot q_i
+\]</div>
+<div class="math display">\[
+a_i = X_{i,\lambda(i)} a_{\lambda(i)} + S_i \ddot q_i + v_i \times (S_i \dot q_i)
+\]</div>
+<div class="math display">\[
+f_i = I_i a_i + v_i \times^* (I_i v_i) - f_i^{ext}
+\]</div>
+<div class="math display">\[
+f_i^{\uparrow} = f_i + \sum_{j \in \mu(i)} X_{i,j}^* f_j^{\uparrow}
+\]</div>
+<div class="math display">\[
+\tau_i = S_i^T f_i^{\uparrow}
+\]</div>
+<p>The earlier Modern Robotics-style formula</p>
+<div class="math display">\[
+\mathcal{F}_i^{\uparrow} = \mathcal{F}_i + \sum_{j \in \mu(i)} \text{Ad}_{T_{i,j}}^* \mathcal{F}_j^{\uparrow}
+\]</div>
+<p>is the same general tree-form recursion written in <span class="math inline">\(\text{Ad}^*\)</span> notation. In the serial-chain special case, Featherstone's parent and child relations reduce to <span class="math inline">\(\lambda(i)=i-1\)</span> and <span class="math inline">\(\mu(i)=\{i+1\}\)</span>.</p>
+<hr />
+<h2 id="closing-remark">Closing remark</h2>
+<p>RNEA can be remembered in one sentence:</p>
+<blockquote>
+<p>propagate twists and accelerations forward, compute local body wrenches, propagate subtree wrenches backward, and project onto joint screw axes.</p>
+</blockquote>
+
+{% endraw %}
